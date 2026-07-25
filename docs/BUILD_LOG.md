@@ -807,3 +807,70 @@ POST /rest/v1/rpc/is_org_member        as anon  -> 404   still not exposed
 
 The distinction matters. `42501` proves the function is published and locked,
 where `404` would have meant it was never reachable and the grant was untested.
+
+---
+
+# CI that actually runs (INF-007, INF-018)
+
+Date: 25 July 2026
+
+## The job
+
+A separate `database` job starts the local Supabase stack, replays every
+migration from an empty database, runs the SQL suites, then replays and re-runs
+a second time. The second pass is the whole point: a migration that only works
+against a database where an earlier version once ran passes once and fails
+there.
+
+It is kept apart from the `quality` job so a lint failure reports in seconds
+rather than waiting behind container startup.
+
+No secret is used anywhere in it. The local stack mints its own throwaway keys,
+so CI never needs access to the hosted project, and a compromised workflow
+cannot reach real data.
+
+## A step that would have proved nothing
+
+`supabase db lint` reports its findings and still exits 0 unless `--fail-on` is
+passed. As first written, the lint step would have passed whatever it found.
+It is now `--level warning --fail-on warning`, which the schema meets today.
+
+Every command in the chain was run locally in the exact order CI uses before
+being committed, rather than assumed to work.
+
+## The worse problem underneath
+
+The first push produced no run at all.
+
+PR #1 had been merged, which stopped the `pull_request` event firing, and the
+only other trigger was `push` to `main`. Eleven commits had therefore landed on
+the working branch with no checks whatsoever: the threat model, all five schema
+migrations, the RLS layer, the PKCE fix and `create_organisation`.
+
+This is the worst shape a CI gap can take. A failing run is loud. A run that
+never happens looks exactly like a green one on the branch view, and nothing
+announces it. The trigger now includes `agent/**`.
+
+Worth generalising: a green tick means the checks that ran passed. It says
+nothing about checks that did not run, and the two are easy to confuse at a
+glance.
+
+## Evidence
+
+Run `30172989614`, both jobs green in 3m55s. The log was read rather than the
+badge trusted, because the failure mode above is precisely a green result that
+means less than it appears:
+
+```text
+Applying migration ... x6, three separate times
+  (initial start, first reset, second reset)
+Files=3, Tests=92   PASS
+Files=3, Tests=92   PASS   (after the second replay)
+No schema errors found
+```
+
+## Still not merged
+
+`main` contains only the original kick-off and the PR #1 merge. All of today's
+work sits on `agent/standalone-app-planning`, unmerged. Opening a pull request
+publishes to the repository, so that decision is left to the owner.
