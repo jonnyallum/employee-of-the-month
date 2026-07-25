@@ -874,3 +874,65 @@ No schema errors found
 `main` contains only the original kick-off and the PR #1 merge. All of today's
 work sits on `agent/standalone-app-planning`, unmerged. Opening a pull request
 publishes to the repository, so that decision is left to the owner.
+
+---
+
+# DB-008: invitations
+
+Date: 25 July 2026
+
+An invitation is an identity. It is the only route into an organisation, which
+makes a working token the most valuable thing in the schema, so the design
+assumes it will leak and asks what happens then.
+
+## Four properties, each enforced rather than assumed
+
+**Only a hash is stored.** A read of `organisation_invitations`, by anyone
+including a database operator, yields nothing usable. A test asserts the stored
+value is not the token and is its SHA-256, because that property silently
+disappearing would hand over a working invitation for every pending employee.
+
+**The token is bound to an intended email**, verified against `auth.users`
+rather than anything the caller supplied. This is what makes a leaked token
+worthless, and it is also what makes `create_invitation` safe to return the raw
+token to an admin: holding it achieves nothing without the mailbox.
+
+**Acceptance is one transaction**, with the invitation row locked `for update`.
+Consuming, linking and admitting happen together. If the participant turns out
+to have been linked in the meantime, the consumption rolls back too, so the
+invitation stays usable instead of being burnt for nothing.
+
+**Reissue revokes first.** Otherwise an intercepted earlier email would still be
+redeemable, which is the whole reason reissue exists.
+
+## A failing test that turned out to be a design fault
+
+The revocation test expected a wrong-email error and got "invitation was
+withdrawn". The test was wrong, but the reason it was wrong was more
+interesting: the state checks ran before the email check, so anyone holding an
+intercepted token could learn whether it had been withdrawn, used or was still
+live.
+
+That discloses another person's account lifecycle to precisely the party who
+should learn nothing. The checks are now ordered so the email binding is
+evaluated first, and a non-recipient learns one thing only: that the token is
+not theirs. The intended recipient still gets accurate, useful errors.
+
+Both cases are now asserted, so the ordering cannot regress silently.
+
+## Other deliberate choices
+
+A missing token and a wrong token raise the same error, so the function cannot
+be used to probe for valid tokens. `revoke_invitation` answers identically for
+an invitation that does not exist and one belonging to another tenant, for the
+same reason.
+
+Acceptance always creates a plain `member`. Nothing about an invitation can
+confer admin rights, which keeps role escalation out of the onboarding path
+entirely.
+
+## Evidence
+
+`Files=4, Tests=122` passing after a clean replay. The 30 for this migration
+cover the wrong-email binding, an unverified account, replay, revocation,
+reissue, cross-tenant attempts and a non-member caller.
