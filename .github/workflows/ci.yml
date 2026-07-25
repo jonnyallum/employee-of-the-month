@@ -5,6 +5,12 @@ on:
   push:
     branches:
       - main
+      # Work branches need CI too. Relying on the pull_request event alone
+      # meant that once PR #1 merged, eleven commits of schema and security
+      # work landed on this branch with no checks running at all: the PR event
+      # had stopped firing and the push filter only covered main. Nobody is
+      # told when a workflow simply does not run.
+      - 'agent/**'
 
 permissions:
   contents: read
@@ -38,3 +44,61 @@ jobs:
 
       - name: Prove the Android JavaScript bundle
         run: npx expo export --platform android --output-dir dist/android
+
+  database:
+    name: Schema replay and SQL security tests
+    runs-on: ubuntu-latest
+    # Slower than the quality job because it starts a real Postgres stack. Kept
+    # as a separate job so a lint failure reports in seconds rather than waiting
+    # behind container startup.
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      # No secret is used anywhere in this job. The local stack generates its
+      # own throwaway keys, so CI never needs access to the hosted project and a
+      # compromised workflow cannot reach real data.
+      - name: Start the local Supabase stack
+        run: npx supabase start
+
+      # The first start already applied every migration to an empty database.
+      # This proves it again from scratch, which is what catches a migration
+      # that only works against a database where an earlier version once ran.
+      - name: Replay migrations from empty
+        run: npx supabase db reset
+
+      - name: Run SQL security and invariant tests
+        run: npx supabase test db
+
+      # Replaying twice is deliberate. A migration that is not idempotent from
+      # empty, or that depends on state left by a previous run, passes once and
+      # fails here.
+      - name: Replay a second time
+        run: npx supabase db reset
+
+      - name: Re-run SQL tests against the second replay
+        run: npx supabase test db
+
+      # --fail-on is required. Without it the command reports findings and still
+      # exits 0, so the step would pass whatever it found and prove nothing.
+      # The schema is clean at warning level today, so warning is the threshold
+      # worth holding rather than the one that is merely easy to keep.
+      - name: Lint the schema
+        run: npx supabase db lint --level warning --fail-on warning
+
+      # Runs even when something above failed, so a broken run does not leave a
+      # stack behind on a self-hosted or reused runner.
+      - name: Stop the stack
+        if: always()
+        run: npx supabase stop --no-backup

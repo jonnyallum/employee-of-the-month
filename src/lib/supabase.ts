@@ -24,6 +24,16 @@ export function getSupabaseClient(): SupabaseClient {
         persistSession: true,
         detectSessionInUrl: false,
         lock: processLock,
+        // PKCE, not the default implicit flow. Under implicit, a confirmation
+        // link returns the access token and refresh token in the URL fragment,
+        // so they appear in the address bar, in browser history and in anything
+        // that logs or shares a URL. A real signup link produced exactly that
+        // during testing, and the tokens had to be revoked.
+        //
+        // PKCE returns a single-use `code` instead, which is worthless without
+        // the verifier held in this client's storage. Nothing sensitive travels
+        // in a URL.
+        flowType: 'pkce',
       },
     },
   );

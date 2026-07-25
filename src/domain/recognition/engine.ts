@@ -235,16 +235,26 @@ export function countedNominations<T extends NominationLike>(
   );
 }
 
+/**
+ * Voters who can actually cast: eligible AND linked to an account. An unlinked
+ * roster entry cannot vote however its flags are set.
+ */
+export function eligibleVoterIds(
+  participants: readonly ParticipantLike[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const participant of participants) {
+    if (participant.canVote && participant.userId) ids.add(participant.userId);
+  }
+  return ids;
+}
+
 export function turnout(
   participants: readonly ParticipantLike[],
   nominations: readonly NominationLike[],
   cycleId: string,
 ): Turnout {
-  const voters = new Set(
-    participants
-      .filter((participant) => participant.canVote && participant.userId)
-      .map((participant) => participant.userId),
-  );
+  const voters = eligibleVoterIds(participants);
   const votersWhoCast = new Set(
     countedNominations(nominations, cycleId)
       .map((nomination) => nomination.nominatorUserId)
@@ -258,6 +268,85 @@ export function turnout(
     canVote,
     turnoutPct: canVote === 0 ? 0 : Math.round((cast / canVote) * 100),
   };
+}
+
+/**
+ * Ballot confidentiality weakens as the electorate shrinks, and no amount of
+ * schema design fixes it. The database can stop an administrator *reading* a
+ * voter identity. It cannot stop them *deducing* one from a small tally.
+ *
+ * The arithmetic, assuming an administrator who is also a voter and who sees
+ * the standings once the cycle closes:
+ *
+ * - 1 voter: the single counted ballot is theirs. Fully public.
+ * - 2 voters: the administrator knows their own ballot and subtracts it. The
+ *   other voter's choice follows with certainty, every time.
+ * - 3 to 7 voters: not certain, but often recoverable. Any tally where the
+ *   remaining ballots land on one nominee attributes all of them at once, and
+ *   that outcome is common in a small group.
+ * - 8 or more: deduction needs assumptions rather than arithmetic.
+ *
+ * Eight is a judgement, not a proof. It is recorded as decision D-022 so it can
+ * be argued with rather than discovered in the code.
+ *
+ * Product rule: warn, do not block. A team of five running this openly and
+ * knowingly is a legitimate use. Implying a guarantee we cannot keep is not.
+ */
+export const CONFIDENTIALITY_WARNING_THRESHOLD = 8;
+
+export type ConfidentialityLevel = 'determined' | 'weak' | 'standard';
+
+export interface ConfidentialityAssessment {
+  eligibleVoters: number;
+  level: ConfidentialityLevel;
+  /** True when the interface must show the warning before opening a cycle. */
+  warn: boolean;
+  /** Plain wording for the administrator. Null when no warning is due. */
+  message: string | null;
+}
+
+export function assessConfidentiality(
+  eligibleVoters: number,
+): ConfidentialityAssessment {
+  const count = Number.isFinite(eligibleVoters)
+    ? Math.max(0, Math.floor(eligibleVoters))
+    : 0;
+
+  if (count <= 2) {
+    return {
+      eligibleVoters: count,
+      level: 'determined',
+      warn: true,
+      message:
+        'With this few voters, anyone who can see the result can work out how ' +
+        'each person voted. Do not describe this month as confidential.',
+    };
+  }
+
+  if (count < CONFIDENTIALITY_WARNING_THRESHOLD) {
+    return {
+      eligibleVoters: count,
+      level: 'weak',
+      warn: true,
+      message:
+        'In a group this small, the result may make individual votes easy to ' +
+        'guess. Tell your team that before they nominate.',
+    };
+  }
+
+  return {
+    eligibleVoters: count,
+    level: 'standard',
+    warn: false,
+    message: null,
+  };
+}
+
+/** Convenience for callers holding a roster rather than a count. */
+export function assessRosterConfidentiality(
+  participants: readonly ParticipantLike[],
+): ConfidentialityAssessment {
+  return assessConfidentiality(eligibleVoterIds(participants).size);
 }
 
 export function tally(

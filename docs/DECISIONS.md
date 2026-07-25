@@ -173,6 +173,67 @@ retention reason and has disclosed it.
 
 **Blocking:** Yes. Requires legal wording and operational process.
 
+## Accepted 25 July 2026, from the schema threat model
+
+`docs/SCHEMA_THREAT_MODEL.md` raised four questions that the schema cannot
+answer on its own. Jonny decided the first explicitly and signed off the
+document, which accepts the recommendations on the other three.
+
+### D-022: warn below eight eligible voters
+
+**Decision:** When an organisation has fewer than eight eligible, account-linked
+voters, the product warns before a cycle opens that individual votes may be
+inferable. It does not block the cycle.
+
+**Why:** Ballot confidentiality is arithmetic, not policy. With one voter the
+single counted ballot is theirs. With two, an administrator who voted subtracts
+their own and the other person's choice follows with certainty. Between three
+and seven it is not certain but is often recoverable, because any tally where
+the remaining ballots land on one nominee attributes all of them at once, and
+that outcome is common in a small group.
+
+`D-003` already commits to saying "confidential" rather than "anonymous". This
+extends the same honesty to the case where even confidentiality is thin. A team
+of five running the programme knowingly is a legitimate customer. Implying a
+protection the maths does not support is not.
+
+Eight is a judgement rather than a proof, which is why it is written down here
+to be argued with rather than buried in a constant.
+
+**Implemented:** `assessConfidentiality` in `src/domain/recognition/engine.ts`,
+with the threshold as `CONFIDENTIALITY_WARNING_THRESHOLD` and five tests
+covering the boundary, the determined cases and non-integer input. The
+requirement is `FR-CYCLE-04`.
+
+### D-023: erasure keeps the winner name and count only
+
+**Decision:** When a user is erased, a retained winner snapshot keeps the
+display name and nomination count. Their reason text does not survive with it.
+
+**Why:** `D-016` justifies keeping a winner record as an organisational fact.
+Free text is personal data with no equivalent justification, and it is the part
+most likely to carry something sensitive.
+
+### D-024: audit events identify the cycle, never the voter
+
+**Decision:** A nomination-cast audit event records the cycle and not the
+nominator, accepting that a disputed individual ballot cannot be investigated
+after the fact.
+
+**Why:** An audit trail that can reconstruct who voted for whom is the exact
+disclosure the product exists to prevent. Investigability is the lesser value.
+This must be stated in the terms rather than discovered during a dispute.
+
+### D-025: purpose-made database roles before production
+
+**Decision:** Edge Functions may use the service role in development. Before
+production they move to roles holding rights only to the tables each function
+needs.
+
+**Why:** The service role bypasses RLS entirely, so every function currently
+carries the blast radius of the whole database. Acceptable while the data is
+synthetic, not once it is real.
+
 ## Explicitly rejected for v1
 
 ### D-017: public join codes
