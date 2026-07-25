@@ -612,3 +612,150 @@ Guarded functions, `DB-007` onwards. Nothing can currently be written by a
 client at all, which is the correct state: creating an organisation, accepting an
 invitation and casting a ballot are all transactional and all need to enforce
 rules a grant cannot express.
+
+---
+
+# Chasing a test email that did arrive
+
+Date: 25 July 2026
+
+The recipient reported no message. The `HTTP 200` recorded earlier proved only
+that Supabase accepted the request, so it was not evidence of much. Three checks,
+cheapest first.
+
+## What was checked
+
+**Supabase auth logs** returned no rows through the management analytics
+endpoint. Not conclusive either way, and not worth more effort with better
+signals available.
+
+**The SMTP path, directly.** `scripts/probe-smtp.ps1` walks the conversation to
+Resend: greeting, `EHLO`, `STARTTLS`, `AUTH LOGIN`, `MAIL FROM`, `RCPT TO`, then
+`QUIT`. `DATA` is never issued, so nothing is sent. It exists to separate three
+failures that look identical from outside: rejected credentials, a sender address
+the provider will not accept, and a refused recipient.
+
+```text
+235 Authentication successful
+250 Accepted        (MAIL FROM recognition@jonnyai.co.uk)
+250 Accepted        (RCPT TO the recipient)
+TLS 1.3
+```
+
+All clean, which moved the question past configuration entirely.
+
+**The provider's own delivery log** settled it:
+
+```text
+2026-07-25 19:05:44 UTC  subject='Confirm your email address'  status=delivered
+```
+
+The message was delivered. Two things most likely hid it: the subject is
+`Confirm your email address` rather than anything mentioning a magic link,
+because `create_user` was set and the address was new to the project, so Supabase
+used its signup template; and the sender `Employee of the Month
+<recognition@jonnyai.co.uk>` is an unfamiliar name to the recipient's mail
+provider, which is exactly what gets filed to spam or promotions.
+
+## The card stays open, and should
+
+`delivered` means the receiving server accepted the message at the SMTP boundary.
+It does not mean the message reached an inbox: a provider can accept and then
+file to spam, and that decision is invisible from the sending side. `INF-003`
+asks for a received message, so it stays open until a human sees it.
+
+This distinction is worth keeping. Treating `delivered` as proof of receipt is
+how a product ships with invitations that quietly land in spam, which for this
+product breaks the only route a new employee has into the programme.
+
+## An operational consequence of the restricted key
+
+The delivery log could not be read with this product's own credential, because
+`INF-014` deliberately restricted it to sending. The answer came from the shared
+full-access key on the same Resend account.
+
+That is a real cost of least privilege rather than an argument against it, but it
+should not depend on borrowing another product's credential. The durable fix is
+delivery webhooks recording events into `notification_deliveries`, which the
+architecture already anticipates, so operators can answer "what happened to that
+message" without holding a key that can read the whole account.
+
+## Raised
+
+`INF-016`: deliverability work before invitations carry real weight. DMARC policy
+for `jonnyai.co.uk`, a recognisable sender name, and a plain-text alternative
+part. Invitation mail is the only way into the product for a new employee, so
+spam placement is a functional defect and not a marketing concern.
+
+## Postscript: it had arrived
+
+Jonny found the message and followed the confirmation link, which produced a
+valid confirmed session. Auth mail therefore works end to end, from send to
+confirmed account, and `INF-003` is closed.
+
+---
+
+# Tokens in a URL, and a scheme that cannot be trusted
+
+Date: 25 July 2026
+
+Following that confirmation link failed, and the failure was worth more than the
+success would have been.
+
+## What the link produced
+
+```text
+http://uk.co.jonnyai.employeeofthemonth//#access_token=...&refresh_token=...&type=signup
+```
+
+Three separate problems are visible in that one line.
+
+### 1. The tokens are in the URL
+
+Under the implicit flow, a confirmation link hands back the access token and
+refresh token in the URL fragment. They land in the address bar, in browser
+history, in any screenshot, and in anything that logs or forwards a URL. In this
+case they were pasted into a chat window, which is exactly the class of accident
+the design should not permit in the first place.
+
+Both were revoked immediately with a global sign-out, which invalidates every
+refresh token for that user rather than only the pasted session. The access
+token was confirmed dead afterwards rather than assumed dead.
+
+The fix is `flowType: 'pkce'` on the Supabase client, now set. PKCE returns a
+single-use `code` which is worthless without the verifier held in the app's own
+storage, so nothing sensitive travels in a URL at all. The default is implicit,
+so this had to be chosen deliberately.
+
+### 2. The custom scheme was rewritten
+
+`uk.co.jonnyai.employeeofthemonth://` became
+`http://uk.co.jonnyai.employeeofthemonth//`. Mail clients and browsers rewrite
+non-http schemes, and on a desktop there is no handler for it regardless. This
+was always going to fail: there is no installed Android app yet, since `FND-010`
+is blocked on Android tooling.
+
+### 3. The real problem: a custom scheme is not exclusive
+
+This is the one that matters. **Any app on the device may register the same
+custom scheme.** Under the implicit flow that means a hostile app can receive a
+link carrying a live session. It is an interception route directly into the auth
+flow, on a product whose entire premise is that ballots stay confidential.
+
+Android App Links do not have this weakness. They are HTTPS URLs verified
+against an `assetlinks.json` file on a domain we control, so no other app can
+claim them, and they degrade to a web page when the app is not installed.
+`INF-009` has been re-scoped and re-prioritised accordingly, and the custom
+scheme is demoted to a fallback rather than the primary route.
+
+PKCE also blunts the interception risk on its own, because a stolen `code` is
+useless without the verifier. The two controls belong together: App Links stop
+the redirect being captured, PKCE ensures capturing it achieves nothing.
+
+## What this says about the earlier decision
+
+`INF-011` set `site_url` to the raw custom scheme, and it was applied and
+recorded as a pass because the value read back correctly from the API. It did,
+and the setting was still wrong. Reading a value back proves it was stored, not
+that it works, and this is a case where nothing short of clicking a real link
+would have shown the difference.
