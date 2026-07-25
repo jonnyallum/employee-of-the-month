@@ -10,6 +10,17 @@ create extension if not exists pgtap;
 
 select plan(37);
 
+
+-- The seed in supabase/seed.sql has already run against this database. This
+-- suite asserts absolute counts and creates its own fixtures, so it starts from
+-- an empty slate instead. Both deletes are inside the transaction and are undone
+-- by the rollback at the end, so the seed survives for the next file.
+--
+-- Deleting organisations cascades to members, participants, cycles, ballots,
+-- invitations and settings; deleting users cascades to profiles.
+delete from public.organisations;
+delete from auth.users;
+
 insert into auth.users (id, email, email_confirmed_at) values
   ('50000000-0000-0000-0000-000000000001', 'ana@alpha.test', now()),
   ('50000000-0000-0000-0000-000000000002', 'ben@alpha.test', now()),

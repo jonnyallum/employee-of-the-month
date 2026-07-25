@@ -1120,3 +1120,70 @@ The generated `get_admin_nominations` type contains no nominator field and no
 precise timestamp. The confidentiality contract that the SQL tests assert is now
 also expressed in the types the app compiles against, so a screen that tries to
 display a voter will not type-check.
+
+---
+
+# DB-019: a seed that means what it says
+
+Date: 25 July 2026
+
+`supabase/seed.sql` now builds two organisations with six people, mixed roles,
+a participant who can be nominated but cannot vote, one on the roster with no
+account and a live invitation, and four cycles: revealed with a clear winner,
+revealed after a tie, closed awaiting reveal, and open partially voted, with a
+hidden and a withdrawn ballot among them.
+
+Months are relative to the current one. The structure is what is deterministic,
+not the dates, so the fixture cannot rot into four historic cycles and nothing
+open.
+
+## Two safety properties
+
+It **refuses to run off a local stack**. `supabase db reset --linked` resets a
+remote database and then runs this file; the reset is the greater danger, but a
+seed that would happily write invented employees into a real project should not
+depend on the operator noticing. The guard checks the well-known local demo JWT
+secret, which a hosted project does not have. Verified by running the file with
+the setting overridden and watching it refuse.
+
+Every seeded address is on a reserved `.example` domain. RFC 2606 guarantees
+those can never be registered, so a stray invitation cannot reach a real person.
+
+## The mistake worth recording
+
+The first version carried a tie decision note on a cycle that was not tied. Ben
+had two nominations, Eli had one.
+
+Nothing failed. The constraint was satisfied, because the stored winner count
+matched the actual leader, and only the story was wrong. A screen built against
+it would have shown a resolved tie on a cycle with a clear leader, which is
+exactly the case most likely to hide a bug in tie handling.
+
+The arrangement turns out to be constrained: with four eligible voters and no
+self-voting, a genuine two-two tie between Ben and Eli requires Ben's votes to
+come from Ana and Eli, and Eli's from Cara and Ben. Any other pairing produces a
+clear leader. That is now stated in the file, because it is not obvious and the
+next person to edit the ballots will otherwise break it again.
+
+`007_seed_integrity.test.sql` exists as a result. It asserts the seed is
+internally coherent: that a tie note implies two people on the winning count,
+that every revealed winner holds the top of its own tally, that the snapshotted
+name matches the participant it points at, and that no unrevealed cycle carries
+winner data. Fixture data that quietly contradicts itself is worse than none,
+because it teaches the wrong shape and makes a real defect look normal.
+
+## The seed broke the existing suites, correctly
+
+Four test files began failing or aborting once seeded data existed, because they
+asserted absolute counts and used single-row subqueries that had only ever seen
+their own fixtures.
+
+The fix is that each functional suite now deletes the seeded organisations and
+users at the start of its transaction, which the rollback undoes. Tests should
+depend on what they create, not on what happens to be lying around, and this
+makes that explicit rather than accidental. `007` is the exception, since
+asserting against the seed is its whole purpose.
+
+## Evidence
+
+`Files=7, Tests=216` passing, across two consecutive replays from empty.
