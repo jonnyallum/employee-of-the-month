@@ -303,3 +303,110 @@ be skipped as a no-op.
 No message has been sent. `INF-003` stays open until a real synthetic
 verification message has been sent and received, which needs a recipient
 address and explicit approval.
+
+---
+
+# First schema: DB-002 and DB-003
+
+Date: 25 July 2026
+
+Authority: `DB-001` signed off, which is what permits a migration to exist. No
+migration has been applied to any hosted project. Everything below happened
+against a local Postgres 17 container.
+
+## What exists now
+
+Two forward-only migrations, replaying from an empty database:
+
+- `20260725184346_identity_and_roster.sql`: the `private` schema, shared trigger
+  functions, then profiles, organisations, organisation_members, participants
+  and organisation_invitations.
+- `20260725184758_recognition_cycles_and_ballots.sql`: recognition cycles,
+  nominations, ballot events, settings, audit events, device push tokens,
+  notification deliveries and privacy requests.
+
+Every table is created **fail-closed**: RLS enabled, no policy, no grant. There
+is no window in which a table exists and is reachable. `DB-005` and `DB-006`
+then open exactly what the exposure matrix allows.
+
+## Invariants that are now structural rather than intended
+
+Tenant coherence is a key, not a check. Child rows reference their parent
+through a composite `(organisation_id, id)` key, so a nomination cannot point at
+a cycle in another organisation even from a direct SQL session with the service
+role. Invariant 1 has to survive a mistake in a trusted function, not only a
+hostile client.
+
+Two rules moved from application logic into CHECK constraints, because a
+constraint cannot be forgotten by whoever writes the next function:
+
+- **No self-nomination.** This needed a design change. The architecture stored
+  only `nominator_user_id`, which would have made the comparison cross-row and
+  therefore trigger work. Storing `nominator_participant_id` alongside it turns
+  the rule into `nominee_participant_id <> nominator_participant_id`, a plain
+  row-level check. A trigger then asserts that the participant genuinely belongs
+  to the nominating user, which closes the obvious workaround of passing
+  somebody else's participant id.
+- **Winner data if and only if revealed.** Members can read
+  `recognition_cycles`, so the threat model's claim that no window exists where
+  a populated winner sits on an unrevealed cycle depended entirely on how the
+  reveal function was written. As a constraint it is now true regardless.
+
+## Evidence
+
+```text
+supabase db reset      x2, both applying both migrations from empty
+supabase test db       33 of 33 pgTAP assertions pass, both times
+supabase db lint       No schema errors found
+```
+
+The suite is `supabase/tests/001_schema_invariants.test.sql` and asserts what
+the schema **refuses**, not what it accepts: cross-tenant references, tenant
+walking by update, duplicate ballots, self-nomination, a nominator participant
+belonging to someone else, two live invitations for one participant, a plaintext
+token, an un-normalised email, a period that is not a month start, a winner on
+an unrevealed cycle, a reveal with no winner, a moderation with no reason, and a
+reason over the limit.
+
+It also asserts the exposure baseline directly: every public table has RLS on,
+and `anon` and `authenticated` hold zero table grants and zero column grants.
+The single most important line checks that `recognition_nominations` is
+unreachable by any client role. If a grant ever appears there, T1 is open.
+
+## A wrong assumption, caught by testing it
+
+The migration first used `FORCE ROW LEVEL SECURITY` on every table, then dropped
+it on the reasoning that FORCE would break the `SECURITY DEFINER` trigger that
+creates profile rows.
+
+**That reasoning was wrong.** Checking `pg_roles` showed `postgres` and
+`service_role` both carry `BYPASSRLS`, so they ignore RLS and FORCE alike.
+Enabling FORCE on `profiles` and inserting an auth user confirmed it: the
+trigger still wrote the profile.
+
+The correct conclusion is different and duller. FORCE is a **no-op** on this
+platform, because every role that writes outside policies has `BYPASSRLS`, and
+`anon` and `authenticated` own nothing. So it neither protects nor breaks
+anything. It stays omitted, but now for the real reason: a clause that looks
+like a control while changing no outcome invites the belief that something is
+guarded when the guard is elsewhere. The migration comment records the
+verification rather than the guess.
+
+What actually closes the Data API is ENABLE plus the absence of a grant, and
+that was confirmed too: `authenticated` selecting from `profiles` returns
+`permission denied for table profiles`.
+
+## Also corrected
+
+The first pgTAP run reported `Looks like you planned 31 tests but ran 33`. Every
+assertion passed, so it would have been easy to treat as noise. It is not: the
+plan is what catches a suite that silently stopped running rather than silently
+passing, and a plan that drifts from the real count makes that alarm useless.
+Counted and corrected to 33.
+
+## Still not done
+
+No policy exists yet, so nothing is reachable by a client. That is `DB-005` and
+`DB-006`, and their role-based tests are where the confidentiality claims get
+tested as an actual member and an actual administrator rather than structurally.
+Nothing has touched the hosted development project.
