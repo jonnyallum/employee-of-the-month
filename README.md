@@ -5,11 +5,15 @@ low-friction employee of the month programme.
 
 ## Project status
 
-**Planning gate only. No application implementation has started.**
+**Foundation build started on 25 July 2026.**
 
-The repository currently contains the evidence, product requirements,
-architecture and delivery board that must be agreed before scaffolding the app.
-The initial target is a free UK closed beta for small and medium-sized teams.
+The repository contains the planning pack plus an Expo Android application
+shell, a tested recognition rules engine, strict local quality gates and local
+Supabase configuration. The initial target remains a free UK closed beta for
+small and medium-sized teams.
+
+The app is not connected to a hosted backend and no Play Store application has
+been created.
 
 ## Planning pack
 
@@ -18,18 +22,45 @@ The initial target is a free UK closed beta for small and medium-sized teams.
 - [Technical architecture](docs/ARCHITECTURE.md)
 - [Google Play release plan](docs/PLAY_STORE_RELEASE_PLAN.md)
 - [Decision log](docs/DECISIONS.md)
+- [Foundation build record](docs/BUILD_LOG.md)
 - [Delivery Kanban](KANBAN.md)
 
-## Proposed stack
+## Implemented foundation
 
-- Expo SDK 56 and React Native 0.85
-- TypeScript
+- Expo SDK 57 and React Native 0.86
+- React 19.2 and strict TypeScript 6
 - Supabase Auth, Postgres, Row Level Security, Storage, Edge Functions and Cron
-- Firebase Cloud Messaging for Android push notifications
+- Biome, Node test runner and GitHub Actions quality gates
 - Google Play App Bundles with Play App Signing
 
-The stack is proposed, not yet installed. Package versions will be pinned and
-committed only after Gate 0 in the Kanban is approved.
+Firebase Cloud Messaging and release signing remain planned work.
+
+## Local development
+
+Requirements:
+
+- Node.js 22.13 or newer;
+- npm;
+- Android Studio and an API 36 emulator for native device work;
+- Docker Desktop running before starting local Supabase.
+
+Install and verify:
+
+```powershell
+npm ci
+npm run check
+npm run doctor
+```
+
+Start the app:
+
+```powershell
+npm start
+```
+
+Copy `.env.example` to a local ignored environment file only when a Supabase
+project is available. The app accepts a project URL and publishable key. A
+service-role key must never be placed in the Expo environment.
 
 ## Source module
 

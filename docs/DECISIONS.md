@@ -2,6 +2,15 @@
 
 Date: 25 July 2026
 
+## Build approval
+
+Jonny authorised the local implementation kick-off on 25 July 2026.
+
+The recommended product defaults in this document are accepted as build
+hypotheses. Legal publisher verification, D-U-N-S evidence and the final Play
+Console account remain required before the first Play app record or upload.
+No production deployment or store submission was authorised.
+
 ## How to use this file
 
 Accepted decisions become architecture constraints. Proposed decisions may be
@@ -196,13 +205,13 @@ Complete this table before scaffolding.
 
 | Decision | Chosen value | Approved by | Date |
 |---|---|---|---|
-| Target customer | Pending | | |
-| App name | Pending | | |
-| Package name | Pending | | |
-| Legal publisher | Pending | | |
-| Play account type/status | Pending | | |
-| Default retention | Pending | | |
-| Admin reason access | Pending | | |
-| Deletion/winner retention rule | Pending | | |
-| Beta organisation target | Pending | | |
-| Build start authorised | No | | |
+| Target customer | UK organisations with 5 to 100 workers | Jonny | 25 July 2026 |
+| App name | Employee of the Month, working identity | Jonny | 25 July 2026 |
+| Package name | `uk.co.jonnyai.employeeofthemonth`, provisional until first Play upload | Jonny | 25 July 2026 |
+| Legal publisher | JonnyAI working identity; legal entity verification pending | Jonny | 25 July 2026 |
+| Play account type/status | Organisation account recommended; evidence pending before Play setup | Jonny | 25 July 2026 |
+| Default retention | 12 months, subject to legal review | Jonny | 25 July 2026 |
+| Admin reason access | After close, except reported content | Jonny | 25 July 2026 |
+| Deletion/winner retention rule | Recommended D-016 treatment, subject to legal review | Jonny | 25 July 2026 |
+| Beta organisation target | 3 to 5 in closed test, expand towards 10 to 20 | Jonny | 25 July 2026 |
+| Build start authorised | Yes, local foundation and application implementation | Jonny | 25 July 2026 |

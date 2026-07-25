@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Employee of the Month",
+    "slug": "employee-of-the-month",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "uk.co.jonnyai.employeeofthemonth",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "uk.co.jonnyai.employeeofthemonth",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#15382F",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F0E7",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 112
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

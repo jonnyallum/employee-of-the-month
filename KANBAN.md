@@ -2,8 +2,8 @@
 
 Baseline date: 25 July 2026  
 Board owner: Product and engineering  
-Current phase: Pre-build decision gate  
-Implementation authorised: **No**
+Current phase: Gate G1 foundation
+Implementation authorised: **Yes, by Jonny on 25 July 2026**
 
 ## Board rules
 
@@ -72,8 +72,8 @@ A code card is done only when:
 
 | Gate | Exit condition | Current state |
 |---|---|---|
-| G0 Product authority | Blocking decisions signed and build authorised | Blocked |
-| G1 Foundation | Reproducible Expo app, CI and local Supabase | Not started |
+| G0 Product authority | Recommended defaults accepted and local build authorised; final Play identity remains a release-account task | Passed 25 July 2026 |
+| G1 Foundation | Reproducible Expo app, CI and local Supabase | In progress |
 | G2 Data security | Schema, RLS, guarded RPCs and adversarial tests pass | Not started |
 | G3 Core workflow | Owner and member complete a cycle end to end | Not started |
 | G4 Privacy and delivery | Deletion, retention, reminders and policy pages work | Not started |
@@ -106,11 +106,11 @@ created before `PRE-013` is complete.
 | [x] | PRE-007 | P0 | Product | 2 | PRE-001..006 | Write PRD with P0/P1/P2 requirements and release criteria. Evidence: `docs/PRD.md`. |
 | [x] | PRE-008 | P0 | Eng | 2 | PRE-002, PRE-005 | Write standalone architecture and security boundaries. Evidence: `docs/ARCHITECTURE.md`. |
 | [x] | PRE-009 | P0 | Product/Eng | 2 | PRE-007, PRE-008 | Create dependency-ordered Kanban. Evidence: this file. |
-| [!] | PRE-010 | P0 | Product | 0.5 | PRE-007 | Confirm target as UK 5 to 100 person organisations, including frontline teams. Done when decision D-009 is signed. |
-| [!] | PRE-011 | P0 | Product/Brand | 1 | PRE-003 | Confirm app name, short descriptor and publisher-facing brand. Done when listing name passes an availability and trademark sense-check. |
-| [!] | PRE-012 | P0 | Product/Ops | 1 | PRE-011 | Confirm legal publisher, package name, Play account type, D-U-N-S and verification state. Done when evidence is recorded without secrets. |
-| [!] | PRE-013 | P0 | Product | 0.5 | PRE-010..012 | Approve or amend all blocking rows in `docs/DECISIONS.md`, including retention, admin reason access and deletion treatment. |
-| [!] | PRE-014 | P0 | Product | 0.5 | PRE-013 | Explicitly authorise implementation start and change `Implementation authorised` to Yes. |
+| [x] | PRE-010 | P0 | Product | 0.5 | PRE-007 | Target accepted for build baseline: UK 5 to 100 person organisations, including frontline teams. Evidence: D-009 and build approval record. |
+| [x] | PRE-011 | P0 | Product/Brand | 1 | PRE-003 | Working app identity accepted for local build: Employee of the Month, with final listing sense-check retained in PLY-002/005. |
+| [>] | PRE-012 | P0 | Product/Ops | 1 | PRE-011 | Working package `uk.co.jonnyai.employeeofthemonth` accepted for local builds. Legal publisher, Play account, D-U-N-S and verification evidence remain required before PLY-002. |
+| [x] | PRE-013 | P0 | Product | 0.5 | PRE-010, PRE-011 | Recommended retention, reason access and deletion defaults accepted as implementation hypotheses, subject to PRV-001 legal review. |
+| [x] | PRE-014 | P0 | Product | 0.5 | PRE-013 | Jonny explicitly authorised implementation start on 25 July 2026. |
 | [ ] | PRE-015 | P0 | Product/Research | 3 | PRE-010 | Interview five programme owners and eight employees. Done when notes are anonymised, themes are synthesised and any P0 requirement change is logged. |
 | [ ] | PRE-016 | P0 | Product | 1 | PRE-015 | Revalidate activation, turnout and second-cycle success thresholds. Evidence: amended PRD or explicit no-change note. |
 
@@ -118,16 +118,16 @@ created before `PRE-013` is complete.
 
 | Status | ID | Pri | Owner | Est. | Depends | Outcome and completion evidence |
 |---|---|---:|---|---:|---|---|
-| [ ] | FND-001 | P0 | Eng | 1 | PRE-014 | Scaffold Expo SDK 56 TypeScript app using the current official command. Pin exact versions and commit lockfile. `expo-doctor` passes. |
-| [ ] | FND-002 | P0 | Eng | 1 | FND-001 | Add agreed package ID, URL scheme, API 36 target, min API 24, adaptive icon placeholders and edge-to-edge config. Config inspection proves values. |
-| [ ] | FND-003 | P0 | Eng | 1 | FND-001 | Establish folder boundaries from architecture and path aliases. A sample domain test imports without route-layer coupling. |
-| [ ] | FND-004 | P0 | Eng | 1 | FND-001 | Add formatter, lint, strict TypeScript and test scripts. Intentionally broken fixtures prove each check fails CI. |
-| [ ] | FND-005 | P0 | Eng | 2 | FND-004 | Add GitHub Actions for install, type check, lint and unit tests using Node 22+. A clean branch run is green. |
-| [ ] | FND-006 | P0 | Eng/Sec | 1 | FND-001 | Add `.gitignore`, `.env.example`, secret scanning and dependency review. Seed it with names only, never values. |
-| [ ] | FND-007 | P0 | Design/Eng | 2 | FND-003 | Create accessible tokens for colour, spacing, type, radius, motion and 48dp touch targets. Contrast evidence meets AA. |
-| [ ] | FND-008 | P0 | Eng | 2 | FND-003, FND-007 | Add root navigation, auth/member/admin route groups and loading/error boundaries. Route smoke tests pass. |
-| [ ] | FND-009 | P0 | Eng | 1 | FND-005 | Add development, preview and production configuration validation. App refuses to start with missing or malformed public config. |
-| [ ] | FND-010 | P0 | Eng/Ops | 1 | FND-002 | Produce first unsigned local Android debug build on API 36 emulator. Evidence: build log and screenshot using synthetic content. |
+| [x] | FND-001 | P0 | Eng | 1 | PRE-014 | Expo SDK 57 TypeScript app scaffolded from the current official template, replacing the superseded SDK 56 planning baseline. Exact dependency versions and lockfile recorded; Expo Doctor passes 17/17. Evidence: `package.json`, `package-lock.json`, `docs/BUILD_LOG.md`. |
+| [x] | FND-002 | P0 | Eng | 1 | FND-001 | Package `uk.co.jonnyai.employeeofthemonth`, matching URL scheme, API 36 SDK baseline, Expo minimum API 24, adaptive icon placeholders and predictive back are configured. Android export passes. |
+| [x] | FND-003 | P0 | Eng | 1 | FND-001 | `src/app`, `src/domain`, `src/lib` and `src/theme` boundaries and `@/*` path alias established. Domain tests run without route imports. |
+| [>] | FND-004 | P0 | Eng | 1 | FND-001 | Biome formatting/lint, strict TypeScript and Node tests pass locally. Deliberate CI failure proof remains before completion. |
+| [>] | FND-005 | P0 | Eng | 2 | FND-004 | Least-privilege GitHub Actions workflow added on pinned Node 22.13 with locked install, checks, Doctor and Android bundle proof. First hosted green run pending push. |
+| [>] | FND-006 | P0 | Eng/Sec | 1 | FND-001 | `.gitignore` and names-only `.env.example` added; direct dependency audit has zero high/critical findings. Secret scanning and dependency review workflow remain. |
+| [>] | FND-007 | P0 | Design/Eng | 2 | FND-003 | Initial colour, spacing and radius tokens plus 58dp primary action implemented. Typography, motion and recorded AA contrast evidence remain. |
+| [>] | FND-008 | P0 | Eng | 2 | FND-003, FND-007 | Root Expo Router stack and safe-area shell added. Auth/member/admin groups, boundaries and route smoke tests remain. |
+| [>] | FND-009 | P0 | Eng | 1 | FND-005 | Public Supabase URL/key validation and tests added, including service-role/JWT rejection. Environment profiles and production start gate remain. |
+| [!] | FND-010 | P0 | Eng/Ops | 1 | FND-002 | Android JavaScript bundle exports successfully. Native debug build and screenshot blocked locally because Android SDK/emulator tooling is not installed or on `PATH`. |
 | [ ] | FND-011 | P1 | Eng | 1 | FND-005 | Add dependency licence inventory and prohibited-licence check. Output is stored as CI artefact. |
 | [ ] | FND-012 | P1 | Eng | 1 | FND-004 | Add a component catalogue route available only in non-production builds. Empty/loading/error states are visible. |
 
@@ -142,7 +142,7 @@ created before `PRE-013` is complete.
 
 | Status | ID | Pri | Owner | Est. | Depends | Outcome and completion evidence |
 |---|---|---:|---|---:|---|---|
-| [ ] | INF-001 | P0 | Eng | 1 | PRE-014 | Install/discover current Supabase CLI, initialise local config and record version. `supabase --help` and local start work. |
+| [!] | INF-001 | P0 | Eng | 1 | PRE-014 | Supabase CLI 2.109.1 pinned and discovered; local config initialised for Postgres 17. `supabase start` is blocked because the Docker Desktop Linux engine is not running. |
 | [ ] | INF-002 | P0 | Ops | 1 | PRE-012 | Create dedicated Supabase development/preview project only. Record project reference in approved config, not docs. |
 | [ ] | INF-003 | P0 | Ops/Eng | 1 | INF-002 | Configure custom SMTP for auth mail before customised templates. Send and receive a synthetic verification message. |
 | [ ] | INF-004 | P0 | Ops | 1 | PRE-012 | Create Firebase Android project matching final package ID. No Analytics product enabled by default. |
@@ -157,8 +157,8 @@ created before `PRE-013` is complete.
 
 | Status | ID | Pri | Owner | Est. | Depends | Outcome and completion evidence |
 |---|---|---:|---|---:|---|---|
-| [ ] | DOM-001 | P0 | Eng | 2 | FND-003, PRE-002 | Extract/adapt pure period, state, eligibility, tally and tie rules from biz-os with source attribution. Existing and new tests pass. |
-| [ ] | DOM-002 | P0 | Eng/Product | 1 | DOM-001, PRE-013 | Add separate `can_vote` and `can_receive`, timezone and tie-note rules. Boundary tests cover all combinations. |
+| [x] | DOM-001 | P0 | Eng | 2 | FND-003, PRE-002 | Pure period, state, eligibility, turnout, tally, rank, visibility and tie rules adapted from biz-os. Fifteen foundation tests pass with environment checks. |
+| [>] | DOM-002 | P0 | Eng/Product | 1 | DOM-001, PRE-013 | Separate `can_vote` and `can_receive` rules and boundary tests added. Organisation timezone and reveal tie-note enforcement remain for the database/API slice. |
 | [ ] | DOM-003 | P0 | Eng | 1 | DOM-001 | Add property or table-driven tests for ranks, ties, zero ballots and order stability. Mutating input does not affect result. |
 | [ ] | DB-001 | P0 | Eng | 2 | INF-001, PRE-013 | Write schema threat model and exact table/RPC exposure matrix before migration. Security reviewer signs it. |
 | [ ] | DB-002 | P0 | Eng | 2 | DB-001 | Create migration for profiles, organisations, memberships, participants and invitations with tenant-coherent keys and indexes. Clean replay passes. |

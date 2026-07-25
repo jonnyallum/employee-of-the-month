@@ -108,7 +108,7 @@ type cannot be treated as a disposable implementation detail.
 
 - `compileSdkVersion`: 36
 - `targetSdkVersion`: 36
-- proposed `minSdkVersion`: 24, Android 7, matching Expo SDK 56 support
+- proposed `minSdkVersion`: 24, Android 7, matching Expo SDK 57 support
 - Edge-to-edge layout enabled and tested.
 - Predictive back tested on Android 16.
 - Adaptive icon with foreground and background assets.

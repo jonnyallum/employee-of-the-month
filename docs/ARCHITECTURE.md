@@ -13,10 +13,11 @@ biz-os application or database at runtime.
 
 ## Why this stack
 
-### Expo SDK 56 and React Native
+### Expo SDK 57 and React Native
 
-- Expo SDK 56 is the current stable Expo release at the time of planning.
-- It uses React Native 0.85 and supports Android API level 36.
+- Expo SDK 57 became the current stable release before implementation began.
+- It uses React Native 0.86, React 19.2 and targets Android API level 36.
+- Its supported Node baseline starts at Node 22.13.
 - React Native has supported 16 KB memory pages since 0.77.
 - It provides native navigation, notifications, secure storage, app links,
   Android builds and Play submission without recreating a native toolchain.
@@ -559,7 +560,7 @@ Reuse by extraction, not copy-paste of the whole module:
 
 Accessed 25 July 2026:
 
-- [Expo SDK 56](https://expo.dev/changelog/sdk-56)
+- [Expo SDK 57](https://expo.dev/changelog/sdk-57)
 - [Expo SDK version matrix](https://docs.expo.dev/versions/latest/)
 - [React Native 0.86 and current releases](https://reactnative.dev/blog/)
 - [React Native Android 16 support](https://reactnative.dev/blog/2025/08/12/react-native-0.81)
