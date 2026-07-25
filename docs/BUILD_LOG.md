@@ -183,3 +183,96 @@ line in an `ErrorRecord` and reports a false failure even on exit code 0.
 No migration was written or applied. The remote database is an empty Postgres
 instance, which is the correct state until `DB-001` produces the schema threat
 model and exposure matrix.
+
+---
+
+# Auth and mail configuration
+
+Date: 25 July 2026
+
+Authority: Jonny approved changing the development project's Auth settings,
+including the redirect configuration, and chose to reuse an existing Resend key
+rather than create a dedicated one.
+
+Both changes were made as scripts rather than dashboard clicks, so the intended
+state is reviewable in the repository, the reasoning sits next to the values,
+and the change can be replayed against a future preview or production project.
+Both scripts are idempotent, support `-WhatIf`, and read every value back from
+the API after writing rather than trusting the write.
+
+## Auth baseline
+
+`scripts/apply-auth-config.ps1` moved four settings off their defaults:
+
+| Setting | Before | After |
+|---|---|---|
+| `password_min_length` | 6 | 12 |
+| `password_required_characters` | none | lower, upper and digit |
+| `site_url` | `http://localhost:3000` | the app's own scheme |
+| `uri_allow_list` | empty | app scheme plus local web dev |
+
+Symbols are deliberately not required. At a 12-character minimum they cost more
+in abandoned mobile sign-ups than they add in entropy.
+
+Expo Go's `exp://` URLs are deliberately absent from the redirect allow list,
+because allowing them means a wildcard over a host we do not control, and the
+allow list is what prevents an open redirect. This product needs a native
+development build for FCM in any case, and the custom scheme works there.
+
+The allow list must be revisited when `INF-009` settles the App Link host.
+
+### One setting could not be applied
+
+Leaked-password protection is refused with `402 Payment Required`. Supabase
+gates HaveIBeenPwned behind the Pro plan and this project is on Free. It is
+the project's only open security advisor and it closes when the project moves
+to Pro, which `ARCHITECTURE.md` already requires before real closed testing.
+
+Worth recording: the management API applies a `PATCH` atomically, so including
+that one field silently prevented the other four from being written. The script
+now sends plan-gated fields separately and reports them as skipped, so one
+unavailable feature cannot quietly block a whole security baseline.
+
+## Auth mail
+
+`scripts/apply-smtp-config.ps1` moved auth mail to Resend. The built-in
+Supabase mailer allows two messages an hour and delivers only to members of the
+Supabase project, so it cannot support invitation or verification journeys at
+all.
+
+| Setting | Value |
+|---|---|
+| Host and port | `smtp.resend.com`, 587 |
+| Sender | `recognition@jonnyai.co.uk` as `Employee of the Month` |
+| Per-address frequency | one message per 60 seconds |
+| Project rate limit | 100 per hour, up from 2 |
+
+The script validates the key against the Resend API and confirms the sending
+domain exists before writing anything, so a dead key cannot be installed
+silently.
+
+### What the domain check found
+
+The shared `jonnyai.co.uk` domain reports `partially_failed`, which looks
+alarming until the individual records are read. DKIM and SPF are both verified
+and only the inbound `Receiving MX` record fails. That affects receiving mail,
+not sending it, and this product does not receive mail. Sending is healthy.
+
+Separately, the copy of the Resend key held in jvault project `bizos` is dead:
+Resend answers `401` for it. Every other copy works. That is a biz-os problem
+rather than one for this product, but it is the reason this script verifies the
+key rather than assuming a vault entry is live.
+
+### Accepted trade
+
+Reusing the `jonnyai` Resend key means this product's auth mail depends on
+another product's credential. Rotating that key breaks sign-up here until
+`scripts/apply-smtp-config.ps1` is re-run. That is recorded on `INF-003` rather
+than left implicit, and it is the argument for a dedicated key before real
+customers exist.
+
+### Not yet proved
+
+No message has been sent. `INF-003` stays open until a real synthetic
+verification message has been sent and received, which needs a recipient
+address and explicit approval.
