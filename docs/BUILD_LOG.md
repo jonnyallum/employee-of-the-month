@@ -936,3 +936,67 @@ entirely.
 `Files=4, Tests=122` passing after a clean replay. The 30 for this migration
 cover the wrong-email binding, an unverified account, replay, revocation,
 reissue, cross-tenant attempts and a non-member caller.
+
+---
+
+# DB-009, DB-010, DB-011: the cycle and the ballot
+
+Date: 25 July 2026
+
+An organisation can now run a complete ballot: create a cycle, open it, cast,
+withdraw, recast, close. This is the first point where the thing behaves like the
+product rather than like infrastructure.
+
+## What the functions add that constraints cannot
+
+The table already refuses a self-nomination, a second ballot per voter, a
+cross-tenant nominee and an incoherent nominator link. Those hold against direct
+SQL. The functions carry the rules that depend on state and identity instead of
+shape:
+
+- the cycle must be open **now**;
+- the voter must be eligible **now**;
+- the voter is `auth.uid()`, never an argument, so nobody votes for anybody else;
+- `expected_version` on every transition, so two administrators pressing close
+  on the same screen produce a deterministic `40001` rather than a lost update;
+- opening validates `FR-CYCLE-02`, refusing a cycle that cannot produce a fair
+  ballot at the moment of opening rather than at close with no result.
+
+Withdrawing marks the row rather than deleting it. The voter keeps their single
+slot and a recast reuses it, which is what stops withdraw-then-vote-again
+becoming two ballots.
+
+## Two bugs the tests found
+
+**`42702`, ambiguous column reference.** The `idempotency_key` parameter shares
+its name with the column it sets, and an unqualified reference inside a statement
+that also has the table in scope is rejected. Parameters are now qualified with
+the function name. Renaming them would also have worked, at the cost of an RPC
+whose argument names no longer match the fields they set.
+
+**`now()` is constant within a transaction.** Opening and closing a cycle in one
+transaction stamped `opens_at` and `closes_at` with the identical instant and
+violated the `closes_at > opens_at` constraint. Both now use `clock_timestamp()`,
+which advances within a transaction and is the more honest value anyway: these
+record when the action happened, not when its transaction began.
+
+The second is the more interesting one. In production those are separate
+requests, so it would not have fired in normal use. It would have waited for
+some batch or backfill that did both at once, which is exactly when nobody is
+watching.
+
+## get_my_nomination
+
+The only client read path into the ballot table, and it takes no voter argument.
+There is no call shape that returns another person's ballot: not a wrong one, not
+a guessed one, none. The return type omits `nominator_user_id` even though the
+caller is the nominator, so a future change to the caller cannot start returning
+identity by accident.
+
+Asserted by having two different voters make the identical call and each receive
+their own ballot, and a third who has not voted receive nothing rather than
+somebody else's.
+
+## Evidence
+
+`Files=5, Tests=159` passing after a clean replay.
