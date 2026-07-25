@@ -263,13 +263,40 @@ Resend answers `401` for it. Every other copy works. That is a biz-os problem
 rather than one for this product, but it is the reason this script verifies the
 key rather than assuming a vault entry is live.
 
-### Accepted trade
+### The shared credential was replaced the same day
 
-Reusing the `jonnyai` Resend key means this product's auth mail depends on
-another product's credential. Rotating that key breaks sign-up here until
-`scripts/apply-smtp-config.ps1` is re-run. That is recorded on `INF-003` rather
-than left implicit, and it is the argument for a dedicated key before real
-customers exist.
+The first configuration reused the `jonnyai` Resend key, which meant this
+product's sign-up would break whenever another product rotated its key. Jonny
+then created a dedicated `employee-of-the-month-dev` key on the same Resend
+account and stored it in this product's vault project, and the configuration was
+moved onto it. The account and sending domain are still shared, so an
+account-level suspension would still affect several products, but the credential
+is now independent, which was the part that mattered.
+
+The key is full-access rather than sending-only, so it can also list and create
+Resend API keys. That is more privilege than an SMTP sender needs, and more than
+belongs in a project's auth configuration. Resend cannot narrow an existing key,
+so `INF-014` covers creating a restricted replacement.
+`scripts/apply-smtp-config.ps1` warns on every run while the key is
+over-privileged, so the warning disappearing is the evidence that card is done.
+
+### A PATCH that quietly undid the whole configuration
+
+Swapping the credential looked like it should be a one-field write, since
+`smtp_pass` is the only thing changing. Sending only `smtp_pass` cleared
+`smtp_host`, `smtp_port`, `smtp_user`, `smtp_admin_email`, `smtp_sender_name`
+and reset `rate_limit_email_sent` to 2. Supabase treats the SMTP block as a
+unit, so omitting a field is read as clearing it rather than leaving it alone.
+
+The project silently reverted to the built-in mailer and its two-per-hour cap.
+Nothing errored. It was caught only because the script reads every value back
+after writing instead of trusting the write, which is the argument for doing
+that as a habit rather than when it feels warranted.
+
+`scripts/apply-smtp-config.ps1` now always sends the complete desired set. It
+also gained `-SetPassword`, because the management API never returns
+`smtp_pass`, so a credential rotation is invisible to a diff and would otherwise
+be skipped as a no-op.
 
 ### Not yet proved
 
