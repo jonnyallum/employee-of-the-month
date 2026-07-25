@@ -12,8 +12,9 @@ shell, a tested recognition rules engine, strict local quality gates and local
 Supabase configuration. The initial target remains a free UK closed beta for
 small and medium-sized teams.
 
-The app is not connected to a hosted backend and no Play Store application has
-been created.
+A dedicated Supabase development project now exists and the repository is
+linked to it, but its database is still empty: no schema, policy or function
+has been created. No Play Store application has been created.
 
 ## Planning pack
 
@@ -61,6 +62,33 @@ npm start
 Copy `.env.example` to a local ignored environment file only when a Supabase
 project is available. The app accepts a project URL and publishable key. A
 service-role key must never be placed in the Expo environment.
+
+## Hosted development project
+
+Credentials for the development Supabase project live in the `jvault` project
+`employee-of-the-month-dev`. They are never committed, written to `.env` or
+printed. Run tooling through the vault runner instead, which injects them for
+the duration of one command and reports key names only:
+
+```powershell
+npm run db:verify
+```
+
+```powershell
+npm run db:link
+```
+
+`scripts/with-vault.ps1` will run anything the same way, so the app can be
+started against the hosted project without an environment file:
+
+```powershell
+powershell -NoProfile -File .\scripts\with-vault.ps1 npm start
+```
+
+`npm run db:verify` checks that the URL matches the project reference, that the
+key is a publishable key rather than a secret or legacy JWT, that the Data and
+Auth APIs answer, and that the remote migration history is what the repository
+expects. Run it before any database work.
 
 ## Source module
 

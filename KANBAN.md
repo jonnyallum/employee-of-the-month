@@ -143,8 +143,8 @@ created before `PRE-013` is complete.
 | Status | ID | Pri | Owner | Est. | Depends | Outcome and completion evidence |
 |---|---|---:|---|---:|---|---|
 | [!] | INF-001 | P0 | Eng | 1 | PRE-014 | Supabase CLI 2.109.1 pinned and discovered; local config initialised for Postgres 17. `supabase start` is blocked because the Docker Desktop Linux engine is not running. |
-| [ ] | INF-002 | P0 | Ops | 1 | PRE-012 | Create dedicated Supabase development/preview project only. Record project reference in approved config, not docs. |
-| [ ] | INF-003 | P0 | Ops/Eng | 1 | INF-002 | Configure custom SMTP for auth mail before customised templates. Send and receive a synthetic verification message. |
+| [x] | INF-002 | P0 | Ops | 1 | PRE-012 | Dedicated Supabase development project created in its own account and organisation `employee-of-the-month-dev`, separate from the biz-os Supabase account, satisfying `D-001`. Repository linked and reachability proved: publishable key authenticates the Data API, Auth API answers, migration history is empty and no table exists. Evidence: `scripts/verify-supabase.ps1` all-pass output in `docs/BUILD_LOG.md`. Reference and credentials live in jvault project `employee-of-the-month-dev`, not in this repository. |
+| [ ] | INF-003 | P0 | Ops/Eng | 1 | INF-002 | Configure custom SMTP for auth mail before customised templates. Send and receive a synthetic verification message. **Now blocks invitation work:** the project still uses the default Supabase mail service, which is capped at two emails per hour and delivers only to project members, so `AUT-004` and `DB-008` cannot be exercised end to end until this is replaced. |
 | [ ] | INF-004 | P0 | Ops | 1 | PRE-012 | Create Firebase Android project matching final package ID. No Analytics product enabled by default. |
 | [ ] | INF-005 | P0 | Eng/Ops | 2 | INF-004, FND-010 | Configure native FCM development credentials and obtain a device token on physical hardware. |
 | [ ] | INF-006 | P0 | Eng | 2 | INF-005, INF-002 | Spike one generic FCM HTTP v1 message from a Supabase Edge Function. Secret stays server-side; receipt is recorded. |
@@ -152,6 +152,9 @@ created before `PRE-013` is complete.
 | [ ] | INF-008 | P0 | Ops | 1 | PRE-012 | Confirm public HTTPS host for privacy, terms, deletion and app-link association pages. No page is deployed yet without approval. |
 | [ ] | INF-009 | P0 | Eng/Ops | 1 | INF-008, FND-002 | Specify Android App Links and fallback custom scheme. Test association file locally and document Play signing fingerprint dependency. |
 | [ ] | INF-010 | P1 | Ops | 1 | INF-002 | Set spend cap, usage alerts, backup expectations and named service owner. Evidence: redacted operations checklist. |
+| [ ] | INF-011 | P0 | Eng/Sec | 0.5 | INF-002 | Move the development Auth configuration off its defaults: raise `password_min_length` from 6, enable leaked-password protection, and replace `site_url = http://localhost:3000` and the empty redirect allow list with the app scheme and App Link host from `INF-009`. Evidence: security advisors report no open warning, plus a recorded settings diff. |
+| [ ] | INF-012 | P0 | Ops | 0.5 | INF-002 | Decide the production Supabase region deliberately. The development project was created in `eu-west-1` (Ireland), not the recommended `eu-west-2` (London), and a project region cannot be changed after creation. Confirm whether Ireland is acceptable for UK customer data and latency, or create production in London. Evidence: recorded decision in `docs/DECISIONS.md`. |
+| [ ] | INF-013 | P2 | Ops | 0.5 | INF-002 | Rename the development project from its generated default name to `employee-of-the-month-dev` so the dashboard matches the organisation and jvault naming. |
 
 ## Phase 30: domain model, database and security
 
