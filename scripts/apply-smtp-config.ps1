@@ -35,33 +35,52 @@ if (-not $ref -or -not $token) { Write-Host "Missing Supabase credentials."; exi
 if (-not $resend) { Write-Host "Missing RESEND_API_KEY in this vault project."; exit 1 }
 if (-not $resend.StartsWith("re_")) { Write-Host "RESEND_API_KEY does not look like a Resend key."; exit 1 }
 
-# Confirm the key works and the sending domain exists before writing it into
-# Supabase, so a dead credential cannot be installed silently. The copy of the
-# shared key in jvault project `bizos` is already dead (401), which is exactly
-# the failure this catches.
+# Confirm the key works before writing it into Supabase, so a dead credential
+# cannot be installed silently. The copy of the shared key in jvault project
+# `bizos` is already dead (401), which is exactly the failure this catches.
+#
+# The obvious check, listing domains, is wrong. A key restricted to "Sending
+# access" cannot read anything, so every GET returns 401 and a domain check
+# would reject the BETTER credential while happily accepting an over-privileged
+# one. This script did exactly that until a properly scoped key was tried
+# against it.
+#
+# The right probe exercises the permission the credential actually needs. POST
+# an empty body to /emails: authentication is evaluated before the payload, so
+#   401         -> the key is not accepted, refuse
+#   400 or 422  -> authentication passed and only the payload was rejected
+# No message is sent either way.
 $senderDomain = "jonnyai.co.uk"
 $resendHeaders = @{ Authorization = "Bearer $resend" }
+$canSend = $false
 try {
-  $domains = Invoke-RestMethod -Uri "https://api.resend.com/domains" `
-    -Headers $resendHeaders -TimeoutSec 20
+  Invoke-WebRequest -Uri "https://api.resend.com/emails" -Method Post `
+    -Headers ($resendHeaders + @{ "Content-Type" = "application/json" }) `
+    -Body '{}' -UseBasicParsing -TimeoutSec 20 | Out-Null
+  $canSend = $true
 }
 catch {
-  Write-Host "Resend rejected this key: $($_.Exception.Message)"
-  exit 1
+  $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+  if ($status -eq 400 -or $status -eq 422) { $canSend = $true }
+  elseif ($status -eq 401) {
+    Write-Host "Resend rejected this key. It is invalid, revoked, or lacks send permission."
+    exit 1
+  }
+  else {
+    Write-Host "Could not verify the key against Resend (HTTP $status). Not installing it."
+    exit 1
+  }
 }
-if (-not ($domains.data | Where-Object { $_.name -eq $senderDomain })) {
-  Write-Host "Resend account has no '$senderDomain' domain."
-  exit 1
-}
-Write-Host "Resend key valid and '$senderDomain' present."
+if (-not $canSend) { Write-Host "Key cannot send."; exit 1 }
+Write-Host "Resend key accepted for sending."
 
 # Least privilege. All this credential needs to do is send. If it can also list
 # and create API keys, then anything that can read the Supabase auth config can
 # mint further credentials on the Resend account. Resend cannot narrow an
-# existing key's permission, so this is a warning rather than a failure: the fix
-# is to create a replacement key with "Sending access" only.
+# existing key, so the fix is a replacement scoped to "Sending access".
 try {
-  Invoke-RestMethod -Uri "https://api.resend.com/api-keys" -Headers $resendHeaders -TimeoutSec 20 | Out-Null
+  Invoke-RestMethod -Uri "https://api.resend.com/api-keys" `
+    -Headers $resendHeaders -TimeoutSec 20 | Out-Null
   Write-Host ""
   Write-Host "WARNING: this key has full access, not sending-only. It can list and"
   Write-Host "         create Resend API keys. Replace it with a key restricted to"
@@ -69,8 +88,14 @@ try {
   Write-Host ""
 }
 catch {
-  Write-Host "Key is sending-scoped: it cannot list Resend API keys."
+  Write-Host "Key is sending-scoped: it cannot read the Resend account."
 }
+
+# A restricted key cannot confirm the sending domain, so that assurance now
+# comes from the send test in INF-003 rather than from an API lookup. Losing a
+# pre-flight check is the price of a credential that cannot read the account,
+# and it is worth paying.
+Write-Host "Sending domain '$senderDomain' cannot be verified with a restricted key."
 
 $desired = [ordered]@{
   smtp_host             = "smtp.resend.com"

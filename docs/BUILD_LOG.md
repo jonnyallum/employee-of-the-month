@@ -410,3 +410,86 @@ No policy exists yet, so nothing is reachable by a client. That is `DB-005` and
 `DB-006`, and their role-based tests are where the confidentiality claims get
 tested as an actual member and an actual administrator rather than structurally.
 Nothing has touched the hosted development project.
+
+---
+
+# Restricted mail credential and the first real send
+
+Date: 25 July 2026
+
+Authority: Jonny supplied a sending-only Resend key and a recipient address for
+the `INF-003` test.
+
+## A check that would have rejected the better credential
+
+`scripts/apply-smtp-config.ps1` proved a key was alive by listing Resend
+domains. That looked reasonable and was wrong. A key restricted to "Sending
+access" cannot read anything, so every `GET` returns `401`. The script would
+therefore have refused the correctly scoped credential while continuing to
+accept the over-privileged one it was written to warn about.
+
+This is worth naming as a category, not just a bug. A validation that tests a
+capability the credential is not supposed to have will always reward the
+credential with too much privilege.
+
+The probe now exercises the permission actually required. `POST /emails` with an
+empty body evaluates authentication before the payload, so `401` means the key
+is dead and `400` or `422` means it authenticated and only the body was
+rejected. Nothing is sent. Distinguishing those two was also how the new key was
+confirmed as genuinely restricted rather than simply broken, since both look
+identical from a `GET`.
+
+One assurance was lost in the trade: a restricted key cannot confirm the sending
+domain exists. That check now comes from the send test instead, which is a
+better source of truth anyway because it exercises delivery rather than
+configuration. Worth paying for a credential that cannot read the account.
+
+## Key handling
+
+The key arrived as a plaintext file. It was moved into jvault with
+`jvault import` from a temporary file rather than `jvault add --value`, so it
+never appeared in a command line, a process list or shell history. The temporary
+file is deleted in a `finally` block. Its shape was checked before use without
+printing it.
+
+Verified restricted after installation: `401` on `/domains`, `/api-keys` and
+`/emails` reads, `422` on a send attempt with an invalid body. The
+over-privilege warning in `apply-smtp-config.ps1` is now silent, which is the
+evidence for `INF-014`.
+
+## The send
+
+`scripts/send-test-email.ps1` sends exactly one magic-link email. It takes the
+recipient as a required argument with no default, because a script that can send
+real mail to a real person should not be runnable absent-mindedly. It uses the
+publishable key over HTTPS, which is the path the Android app itself will take,
+so a pass means the app's verification mail works rather than only that the SMTP
+settings parse. Magic link rather than sign-up avoids inventing a password that
+would then need storing or discarding.
+
+```text
+POST /auth/v1/otp  ->  HTTP 200 in 2.1s
+```
+
+A `200` means Supabase accepted the request and handed the message to Resend. A
+rejected credential or unverified sender fails with a `5xx` at this point rather
+than succeeding quietly, which is what makes the result meaningful.
+
+## What this does not prove
+
+Delivery. Inbox placement, spam filtering and DMARC alignment are not observable
+from the sending side, so `INF-003` stays open until a human confirms the message
+arrived, in which folder, and that the sender renders as expected. Claiming the
+card complete on a `200` would be reporting the wrong thing.
+
+## Raised
+
+`INF-015`: the full-access Resend key created earlier the same day is now
+superseded and unused, but still grants full read and key-creation rights on the
+account. An unused credential is only a liability.
+
+Also outstanding: the plaintext key file at
+`C:\Users\jonny\Desktop\Projects\resender.txt` still exists. The value is safely
+in jvault, so the file is now redundant and should be deleted. It was left in
+place rather than removed, because deleting a file this session did not create is
+the owner's call.
