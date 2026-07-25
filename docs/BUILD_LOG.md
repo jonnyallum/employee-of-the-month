@@ -759,3 +759,51 @@ recorded as a pass because the value read back correctly from the API. It did,
 and the setting was still wrong. Reading a value back proves it was stored, not
 that it works, and this is a case where nothing short of clicking a real link
 would have shown the difference.
+
+---
+
+# DB-007: the first write a client is allowed
+
+Date: 25 July 2026
+
+`create_organisation` is the entry point to the product and the first thing any
+client can write. Everything before this was readable or nothing.
+
+It is a function rather than an INSERT grant because four rows have to appear
+together or not at all: the organisation, the creator's ownership, the creator's
+roster entry and the programme settings. A grant cannot express "and also make
+me the owner", and a client doing it in four requests can fail after the first
+and leave an organisation that nobody can administer and nobody can delete.
+
+## Decisions inside it
+
+The creator is placed on the roster. Without that the owner cannot vote in or
+receive nominations from their own programme, which in a five-person team
+quietly removes a fifth of the roster for a reason no user could work out.
+
+Settings are created immediately, so no screen ever has to distinguish "not
+configured yet" from "configured to the default".
+
+Refusals raise product error codes rather than letting a constraint fire, so the
+client sees `invalid_timezone` instead of a constraint name. The table trigger
+still catches an unknown zone if anything reaches it another way; this is a
+better message, not a replacement control.
+
+The verified-email check reads `auth.users.email_confirmed_at` rather than a JWT
+claim, consistent with every other authorisation decision in the schema.
+
+## Evidence
+
+92 assertions now pass across three suites. The 23 for this function cover who
+may call it, every refusal, and the resulting rows one at a time rather than
+just that a uuid came back.
+
+Checked at the real API boundary as well as in SQL:
+
+```text
+POST /rest/v1/rpc/create_organisation  as anon  -> 42501 permission denied
+POST /rest/v1/rpc/is_org_member        as anon  -> 404   still not exposed
+```
+
+The distinction matters. `42501` proves the function is published and locked,
+where `404` would have meant it was never reachable and the grant was untested.
