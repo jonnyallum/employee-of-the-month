@@ -5,6 +5,12 @@ on:
   push:
     branches:
       - main
+      # Work branches need CI too. Relying on the pull_request event alone
+      # meant that once PR #1 merged, eleven commits of schema and security
+      # work landed on this branch with no checks running at all: the PR event
+      # had stopped firing and the push filter only covered main. Nobody is
+      # told when a workflow simply does not run.
+      - 'agent/**'
 
 permissions:
   contents: read
