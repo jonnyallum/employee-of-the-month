@@ -18,7 +18,7 @@ create extension if not exists pgtap;
 
 -- Must match the assertion count exactly. A plan is not bureaucracy: it is what
 -- catches a test that silently stopped running rather than silently passing.
-select plan(33);
+select plan(36);
 
 -- ---------------------------------------------------------------------------
 -- Fail-closed exposure
@@ -38,20 +38,65 @@ select is(
   (
     select count(*)::int
     from information_schema.role_table_grants
-    where table_schema = 'public' and grantee in ('anon', 'authenticated')
+    where table_schema = 'public' and grantee = 'anon'
   ),
   0,
-  'no client role holds any grant on any public table before DB-005'
+  'anon holds no table grant anywhere'
 );
 
 select is(
   (
     select count(*)::int
     from information_schema.role_column_grants
-    where table_schema = 'public' and grantee in ('anon', 'authenticated')
+    where table_schema = 'public' and grantee = 'anon'
   ),
   0,
-  'no client role holds a column-level grant either'
+  'anon holds no column grant anywhere'
+);
+
+-- Pins the whole exposure surface by name. Any table that gains a grant without
+-- this list being updated fails here, which is the point: the failure mode this
+-- guards against is a future migration granting something reasonable-looking on
+-- a table the threat model deliberately left closed.
+select is(
+  (
+    select string_agg(distinct table_name, ',' order by table_name)
+    from information_schema.role_column_grants
+    where table_schema = 'public' and grantee = 'authenticated'
+  ),
+  'organisation_members,organisations,participants,profiles,'
+    || 'recognition_cycles,recognition_settings',
+  'exactly six tables are reachable by a client, and no others'
+);
+
+-- The two withheld columns are what stop a member joining a roster name to an
+-- auth identity, and what stop the eligible-voter set narrowing the possible
+-- authors of a reason.
+select is(
+  (
+    select count(*)::int
+    from information_schema.role_column_grants
+    where table_schema = 'public'
+      and table_name = 'participants'
+      and grantee = 'authenticated'
+      and column_name in ('user_id', 'can_vote')
+  ),
+  0,
+  'participants never exposes user_id or can_vote to a client'
+);
+
+select is(
+  (
+    select count(*)::int
+    from information_schema.role_column_grants
+    where table_schema = 'public'
+      and table_name = 'profiles'
+      and grantee = 'authenticated'
+      and privilege_type = 'UPDATE'
+      and column_name <> 'display_name'
+  ),
+  0,
+  'profiles is writable only in the display_name column'
 );
 
 select ok(
@@ -59,9 +104,21 @@ select ok(
   'anon cannot use the private schema'
 );
 
-select ok(
-  not has_schema_privilege('authenticated', 'private', 'usage'),
-  'authenticated cannot use the private schema'
+-- authenticated DOES hold USAGE on private, because policy expressions are
+-- evaluated with the caller's privileges and would otherwise fail. That is not
+-- exposure: PostgREST serves only its configured schemas, and private is not
+-- one. What must stay true is that the grant is narrow, so assert the exact set
+-- of helpers a client can execute.
+select is(
+  (
+    select string_agg(p.proname, ',' order by p.proname)
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and has_function_privilege('authenticated', p.oid, 'execute')
+  ),
+  'has_org_role,is_org_member',
+  'a client can execute only the two policy helpers in private, nothing else'
 );
 
 -- The single most important line in the schema. If a grant ever appears here,

@@ -142,8 +142,29 @@ Two rules apply throughout:
 | `audit_events` | **none** | n/a | Contains actor and entity references that admit inference. Admin views come from a shaped function |
 | `privacy_requests` | **none** | n/a | Status is returned by a function that never discloses another subject's request |
 
-Everything in the `private` schema is unreachable: the schema is not in the
-API's exposed list and `authenticated` holds no `USAGE` on it.
+Everything in the `private` schema is unreachable, though not for the reason
+this document first gave.
+
+The original wording said `authenticated` holds no `USAGE` on `private`. That
+is unimplementable. RLS policy expressions are evaluated with the **caller's**
+privileges, so a policy calling `private.is_org_member` requires the querying
+role to hold `EXECUTE` on it and `USAGE` on the schema. Without both, every
+query on a protected table fails with `permission denied for function`.
+
+So `authenticated` does hold `USAGE` on `private`, plus `EXECUTE` on exactly the
+two helpers that appear inside a policy expression. Helpers called only from
+`SECURITY DEFINER` functions are deliberately not granted, because a definer
+function runs as its owner and needs nothing from its caller.
+
+**The control is the exposed-schema list, not the grant.** PostgREST serves only
+the schemas it is configured to expose, `public` and `graphql_public`, so nothing
+in `private` is reachable as an RPC whatever privileges exist. Verified against a
+running instance: `POST /rest/v1/rpc/is_org_member` returns `PGRST202`, saying it
+searched `public` and found no such function.
+
+The correction matters more than the detail. This was a control asserted in a
+signed document that would have failed the first time it was implemented, and
+only implementing it revealed that.
 
 ### The column subset on `participants` is load-bearing
 

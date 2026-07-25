@@ -493,3 +493,122 @@ Also outstanding: the plaintext key file at
 in jvault, so the file is now redundant and should be deleted. It was left in
 place rather than removed, because deleting a file this session did not create is
 the owner's call.
+
+---
+
+# RLS: DB-004, DB-005 and DB-006
+
+Date: 25 July 2026
+
+This is the point where the product's central promise stops being a design
+intention and becomes something a database enforces. Three migrations and a
+second test suite that asks each actor, in turn, what they can actually reach.
+
+## What is now reachable
+
+Six tables, and nothing else:
+
+| Table | Client access |
+|---|---|
+| `profiles` | own row; update restricted to the `display_name` column |
+| `organisations` | active members, excluding soft-deleted |
+| `organisation_members` | rows inside the caller's organisations |
+| `participants` | seven columns, active rows, own organisations |
+| `recognition_cycles` | own organisations, all columns |
+| `recognition_settings` | three transparency columns |
+
+Everything else has no grant: invitations, nominations, ballot events, audit
+events, push tokens, deliveries and privacy requests.
+
+`participants` withholds `user_id`, `can_vote` and its timestamps. PostgREST
+honours column privileges by refusing rather than silently dropping, so a client
+asking for `user_id` gets an error instead of something that looks like it
+worked.
+
+## Proof, as each actor
+
+`supabase/tests/002_rls_policies.test.sql` assumes the `authenticated` role and
+sets the JWT claims that `auth.uid()` reads, which is exactly what PostgREST
+does. Two organisations exist so tenant isolation is testable, and Cara's real
+ballot for Ben is the row every assertion tries and fails to reach.
+
+The assertions that matter most:
+
+- a member, an **admin** and an **owner** are each refused `42501` on
+  `recognition_nominations`;
+- an admin naming `nominator_user_id` directly is refused;
+- an admin running a bare `count(*)` is refused, which would otherwise leak live
+  turnout and break `FR-RESULT-01`;
+- another tenant's owner sees none of Alpha's roster, cycles or members when
+  asking by id;
+- a member whose status is `left` reaches nothing at all, immediately;
+- the ballot row and its `nominator_user_id` genuinely still exist. The
+  confidentiality is a property of the exposure rules, not of the data being
+  absent, and asserting that keeps the distinction honest.
+
+Totals: 36 structural assertions in 001, 33 role assertions in 002, all passing
+after a clean replay.
+
+## A wrong control, caught by implementing it
+
+The signed threat model stated that `authenticated` would hold no `USAGE` on the
+`private` schema. That is unimplementable. RLS policy expressions are evaluated
+with the **caller's** privileges, so a policy calling `private.is_org_member`
+needs the querying role to hold `EXECUTE` on the function and `USAGE` on the
+schema. Without both, every query on a protected table fails with
+`permission denied for function`.
+
+Worse than the error is how it was nearly missed. An experiment run beforehand
+appeared to prove that policies needed no such grant. It was wrong, because the
+throwaway function in the experiment still carried Postgres's default `EXECUTE`
+for `PUBLIC`, which the real helpers do not: the migration revokes it. The
+experiment did not isolate the variable it claimed to test, so it produced a
+confident and false result. The RLS tests caught it minutes later.
+
+That is the second time this session that reasoning about Postgres produced a
+plausible wrong answer, after `FORCE ROW LEVEL SECURITY`. The pattern is worth
+naming: an experiment that does not control for defaults tests the defaults.
+
+## The corrected control
+
+`authenticated` holds `USAGE` on `private` and `EXECUTE` on exactly the two
+helpers that appear inside a policy. The two called only from `SECURITY DEFINER`
+functions are not granted, because a definer function runs as its owner and
+needs nothing from the caller.
+
+The protection comes from the exposed-schema list rather than the grants, and
+that was verified at the real API boundary rather than assumed:
+
+```text
+POST /rest/v1/rpc/is_org_member
+  -> 404 PGRST202, "searched for the function public.is_org_member ... no matches"
+
+GET /rest/v1/recognition_nominations
+  -> 42501, permission denied for table recognition_nominations
+
+GET /rest/v1/participants
+  -> 42501, permission denied for table participants
+```
+
+PostgREST searched `public` only. The threat model has been corrected in place,
+because a control that is asserted but never exercised is worth nothing, and this
+one sat in a signed document.
+
+## The exposure surface is now pinned by a test
+
+`001` previously asserted that no client role held any grant, which was true
+before `DB-005` and is now meaningless. It has been replaced with assertions
+that name the six reachable tables exactly, confirm `participants` never exposes
+`user_id` or `can_vote`, confirm `profiles` is writable only in `display_name`,
+and confirm a client can execute only the two policy helpers in `private`.
+
+A future migration that grants something reasonable-looking on a closed table
+now fails the suite rather than passing quietly. That is the failure mode worth
+defending against, because it will look like an ordinary feature at review time.
+
+## Still not done
+
+Guarded functions, `DB-007` onwards. Nothing can currently be written by a
+client at all, which is the correct state: creating an organisation, accepting an
+invitation and casting a ballot are all transactional and all need to enforce
+rules a grant cannot express.
