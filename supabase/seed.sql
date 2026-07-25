@@ -1,0 +1,2 @@
+-- Synthetic development seed data will be added only after the first schema
+-- migration and its RLS tests exist. Never place real employee data here.

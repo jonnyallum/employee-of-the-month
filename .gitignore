@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Expo output
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Generated native projects
+/android/
+/ios/
+.kotlin/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Local Supabase state
+supabase/.branches/
+supabase/.temp/
+
+# Tool output
+coverage/
+*.tsbuildinfo
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Operating systems and editors
+.DS_Store
+.vscode/
+
+# Temporary scaffold
+.expo-scaffold/
