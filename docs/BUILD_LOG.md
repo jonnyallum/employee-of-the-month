@@ -1074,3 +1074,49 @@ introduced. A blanket revoke only ever covers the past: every new function in
 `Files=6, Tests=200` passing after a clean replay. A full cycle now runs end to
 end: create an organisation, invite, accept, open, vote, moderate, close, tally
 and reveal, including a tie and a zero-ballot case.
+
+---
+
+# DB-016 and a CI defect of my own making
+
+Date: 25 July 2026
+
+## Duplicate CI runs
+
+Adding the `agent/**` push trigger fixed the gap where eleven commits ran with no
+checks, and introduced a smaller one: every commit on a branch with an open pull
+request then ran the whole suite twice, once per event.
+
+Fixed with a concurrency group keyed on the **commit** rather than the ref, so a
+push and a pull_request event for the same commit collapse into one run.
+`cancel-in-progress` also stops a superseded run finishing after the commit that
+replaced it, which matters more than the wasted minutes: a stale green arriving
+after a newer failure is the last thing anyone sees.
+
+## Generated database types
+
+`src/types/database.ts` is generated from the local schema and committed. It
+covers every table and all fourteen guarded functions.
+
+CI regenerates it and runs `git diff --exit-code`. Without that, types drift
+silently: the schema moves, the checked-in file does not, and TypeScript
+cheerfully keeps confirming a shape the database no longer has. That failure is
+invisible until runtime, which is the worst place to meet it.
+
+The check was verified to fail on a deliberately altered file before being
+trusted. After `supabase db lint` turned out to exit 0 while reporting findings,
+assuming a check works is not something worth repeating.
+
+## Why the generated file is excluded from Biome
+
+Biome wanted to reformat it. Doing so would make the drift comparison fail
+permanently, because CI compares against raw generator output. Generated files
+should not be formatted by hand or by tool, so it is excluded and the committed
+bytes stay identical to what the generator produces.
+
+## An unplanned benefit
+
+The generated `get_admin_nominations` type contains no nominator field and no
+precise timestamp. The confidentiality contract that the SQL tests assert is now
+also expressed in the types the app compiles against, so a screen that tries to
+display a voter will not type-check.
