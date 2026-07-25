@@ -21,6 +21,7 @@ has been created. No Play Store application has been created.
 - [Research and product strategy](docs/RESEARCH.md)
 - [Product requirements](docs/PRD.md)
 - [Technical architecture](docs/ARCHITECTURE.md)
+- [Schema threat model and exposure matrix](docs/SCHEMA_THREAT_MODEL.md)
 - [Google Play release plan](docs/PLAY_STORE_RELEASE_PLAN.md)
 - [Decision log](docs/DECISIONS.md)
 - [Foundation build record](docs/BUILD_LOG.md)
