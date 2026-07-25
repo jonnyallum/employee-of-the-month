@@ -122,7 +122,7 @@ created before `PRE-013` is complete.
 | [x] | FND-002 | P0 | Eng | 1 | FND-001 | Package `uk.co.jonnyai.employeeofthemonth`, matching URL scheme, API 36 SDK baseline, Expo minimum API 24, adaptive icon placeholders and predictive back are configured. Android export passes. |
 | [x] | FND-003 | P0 | Eng | 1 | FND-001 | `src/app`, `src/domain`, `src/lib` and `src/theme` boundaries and `@/*` path alias established. Domain tests run without route imports. |
 | [>] | FND-004 | P0 | Eng | 1 | FND-001 | Biome formatting/lint, strict TypeScript and Node tests pass locally. Deliberate CI failure proof remains before completion. |
-| [>] | FND-005 | P0 | Eng | 2 | FND-004 | Least-privilege GitHub Actions workflow added on pinned Node 22.13 with locked install, checks, Doctor and Android bundle proof. First hosted green run pending push. |
+| [x] | FND-005 | P0 | Eng | 2 | FND-004 | Least-privilege GitHub Actions workflow runs on pinned Node 22.13 with locked install, checks, Doctor and Android bundle proof. Hosted run `30164124076` passed; deprecated action runtime warning removed in the follow-up. |
 | [>] | FND-006 | P0 | Eng/Sec | 1 | FND-001 | `.gitignore` and names-only `.env.example` added; direct dependency audit has zero high/critical findings. Secret scanning and dependency review workflow remain. |
 | [>] | FND-007 | P0 | Design/Eng | 2 | FND-003 | Initial colour, spacing and radius tokens plus 58dp primary action implemented. Typography, motion and recorded AA contrast evidence remain. |
 | [>] | FND-008 | P0 | Eng | 2 | FND-003, FND-007 | Root Expo Router stack and safe-area shell added. Auth/member/admin groups, boundaries and route smoke tests remain. |

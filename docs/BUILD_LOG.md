@@ -44,6 +44,9 @@ npx expo export --platform android --output-dir dist/android
 
 npx expo install --check
   Dependencies: compatible after patch alignment
+
+GitHub Actions run 30164124076
+  Hosted Node 22 quality job: passed in 1m2s
 ```
 
 The local runtime was Node 25.2.1. CI deliberately uses Node 22.13.1, the
