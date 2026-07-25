@@ -1000,3 +1000,77 @@ somebody else's.
 ## Evidence
 
 `Files=5, Tests=159` passing after a clean replay.
+
+---
+
+# DB-012, DB-013, DB-014: the administrator's view
+
+Date: 25 July 2026
+
+This is where the product promise is either kept or broken. An administrator
+legitimately needs to moderate content, see turnout and reveal a winner. None of
+those require knowing who voted for whom, and this migration is the proof that
+they can be provided without it.
+
+## The technique: let the return type do the work
+
+A policy can filter rows but cannot hide a column. A function's declared output
+can simply not contain the field. If voter identity is not in the type, no bug in
+the body can leak it, and a future change that tries has to alter the signature,
+which is visible in review.
+
+So the most important assertion in the project is a contract test pinning the
+exact result signature of `get_admin_nominations` by name. It fails if a column
+is added, rather than relying on somebody noticing.
+
+What an administrator gets: nomination id, nominee, reason, status, moderation
+fields, and a date. What they never get: any nominator reference, any precise
+timestamp, or any ordering that reflects insertion sequence. Results come back
+ordered by nominee name, because a time-ordered list hands back exactly the
+sequence that day-truncation exists to remove.
+
+## One definition of the tally
+
+`get_closed_standings` and `reveal_winner` both read `private.cycle_tally`. If
+they counted separately they could disagree, and an administrator would be shown
+one result while another was revealed. One definition removes the possibility
+rather than making it unlikely.
+
+`reveal_winner` recomputes rather than trusting the caller. A clear leader cannot
+be overridden, which is the failure the whole product exists to avoid. A tie must
+be resolved from among the joint leaders and carry a note. A cycle nobody voted
+in cannot be revealed at all.
+
+Standings refuse while a cycle is open rather than returning an empty set,
+because empty is indistinguishable from nobody having voted, which is itself
+information.
+
+## Turnout has no named variant, on purpose
+
+`get_cycle_turnout` returns three numbers. There is deliberately no function
+returning who has or has not voted. The reminder job may privately identify
+non-voters in order to message them; no interface may, because that turns a
+recognition programme into an attendance monitor.
+
+## The exposure test earned its keep
+
+Adding `private.cycle_tally` broke the assertion in `001` that pins which private
+functions a client may execute. Postgres grants `EXECUTE` to `PUBLIC` on every
+new function, and the blanket revoke in the `DB-004` migration only covered the
+functions that existed at the time.
+
+So `authenticated` could call the raw tally directly. It returns per-nominee
+counts, which would have handed a member live standings while voting was open
+and broken `FR-RESULT-01`.
+
+Not reachable as an RPC, since `private` is not an exposed schema, so this was a
+second line rather than an open door. But it is exactly the quiet regression the
+test was written for, and it was caught by name within a minute of being
+introduced. A blanket revoke only ever covers the past: every new function in
+`private` needs its own.
+
+## Evidence
+
+`Files=6, Tests=200` passing after a clean replay. A full cycle now runs end to
+end: create an organisation, invite, accept, open, vote, moderate, close, tally
+and reveal, including a tie and a zero-ballot case.
