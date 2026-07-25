@@ -1,9 +1,10 @@
 # Schema threat model and exposure matrix
 
-Version: 0.1 for review
+Version: 1.0
 Date: 25 July 2026
-Status: **Drafted, not signed off.** `DB-001` completes when a security
-reviewer signs this document. No migration may be written until then.
+Status: **Signed off by Jonny on 25 July 2026.** `DB-002` and the migration
+cards after it are unblocked. See the sign-off note at the end for the scope of
+that approval.
 
 Covers `DB-002` to `DB-019`. Read with `docs/ARCHITECTURE.md`, whose data model
 this refines, and `docs/PRD.md`, whose functional requirements it enforces.
@@ -391,29 +392,41 @@ Named tests that must exist before `DB-006` closes:
 10. A revealed cycle cannot be reopened, including by direct update.
 11. `participants` returns no `user_id` column to a member.
 
-## Open questions for the reviewer
+## Questions raised, and how they were answered
 
-1. **Small-team confidentiality.** Should the product refuse to open a cycle
-   below a minimum roster size, warn clearly, or say nothing? The schema cannot
-   fix inference at n=3. Recommendation: warn below eight eligible voters, and
-   make the warning part of the copy rather than a footnote.
-2. **Reason retention against winner retention.** `D-016` keeps a winner
-   snapshot after erasure. Does the winner's own reason text survive with it, or
-   is the snapshot name and count only? Recommendation: name and count only.
-3. **Audit granularity.** A nomination-cast event identifies the cycle and not
-   the voter, which is right for confidentiality but leaves no way to
-   investigate a disputed ballot. Is that acceptable? Recommendation: yes, and
-   say so explicitly in the terms.
-4. **Service-role blast radius.** Should Edge Functions use the service role, or
-   a purpose-made role with rights to only the tables each function needs?
-   Recommendation: the latter before production, service role acceptable for
-   development.
+All four are now decisions in `docs/DECISIONS.md` rather than open items.
+
+1. **Small-team confidentiality.** Warn below eight eligible voters, in the copy
+   rather than a footnote, and do not block the cycle. `D-022`, implemented as
+   `assessConfidentiality` and required by `FR-CYCLE-04`.
+2. **Reason retention against winner retention.** A retained winner snapshot
+   keeps the display name and count. Reason text does not survive erasure.
+   `D-023`.
+3. **Audit granularity.** Accepted: a nomination-cast event identifies the cycle
+   and not the voter, so a disputed individual ballot cannot be investigated
+   afterwards. This must appear in the terms rather than surface during a
+   dispute. `D-024`.
+4. **Service-role blast radius.** Service role is acceptable in development.
+   Purpose-made per-function roles before production. `D-025`.
 
 ## Sign-off
 
 | Role | Name | Date | Decision |
 |---|---|---|---|
-| Security reviewer | | | |
-| Product owner | | | |
+| Security reviewer | Jonny Allum | 25 July 2026 | Approved |
+| Product owner | Jonny Allum | 25 July 2026 | Approved |
 
-`DB-002` and everything after it stay blocked until both rows are filled.
+### What this sign-off is, and what it is not
+
+Both rows carry the same name. There has been no independent security review,
+because at this stage the product has one operator. That is a reasonable
+position for a development project holding synthetic data, and it is recorded
+here rather than presented as two separate approvals.
+
+`docs/PRD.md` makes RLS coverage and adversarial review release criteria for
+closed testing, and `DB-018` is a distinct adversarial pass. Before real
+employee data exists, this document should be re-reviewed by someone who did not
+write it. That is a release gate, not a backlog item.
+
+This approval unblocks migration work. It does not approve any production
+deployment, any Play Store record, or the processing of real employee data.

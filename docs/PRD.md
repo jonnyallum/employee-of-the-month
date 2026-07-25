@@ -233,6 +233,29 @@ Acceptance:
 - Store open and close timestamps in UTC and render in organisation timezone.
 - V1 supports manual open and close. Automatic close is P1.
 
+**FR-CYCLE-04: small-electorate warning**
+
+- Before a cycle opens, count eligible voters who are linked to an account.
+- Below eight, warn the administrator that individual votes may be inferable
+  from the result, and do not block the cycle.
+- At two or fewer, state plainly that anyone who can see the result can work out
+  how each person voted.
+- The member-facing confidentiality copy reflects the same reality rather than
+  promising uniform protection.
+
+Acceptance:
+
+- Given seven eligible voters, when an administrator opens a cycle, then the
+  warning is shown and opening still succeeds.
+- Given eight, then no warning is shown.
+- Given a roster of nine people where only two have accepted an invitation and
+  can vote, then the strongest warning is shown, because unlinked and ineligible
+  entries do not protect anybody.
+- The warning is a first-class part of the screen, not help text.
+
+See `D-022`. The threshold is a judgement about a spectrum, not a cliff, and it
+belongs to product rather than engineering.
+
 #### Ballot
 
 **FR-BALLOT-01: confidential nomination**
@@ -486,5 +509,10 @@ Blocking decisions are tracked in `docs/DECISIONS.md` and Gate 0 of
 5. Whether reason text remains optional or becomes configurable in v1.
 6. Whether programme administrators should be allowed to see nomination
    reasons before voting closes. Recommendation: no.
+
+Resolved on 25 July 2026 by the schema threat model sign-off: the
+small-electorate warning threshold (`D-022`, `FR-CYCLE-04`), erasure against
+winner retention (`D-023`), audit granularity (`D-024`) and database role scope
+(`D-025`).
 7. Legal review of controller/processor roles, terms, privacy wording and
    employment-use disclaimer.

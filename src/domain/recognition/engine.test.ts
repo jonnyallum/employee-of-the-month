@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  assessConfidentiality,
+  assessRosterConfidentiality,
+  CONFIDENTIALITY_WARNING_THRESHOLD,
   CYCLE_TRANSITIONS,
   type CycleLike,
   canTransition,
   currentCycle,
+  eligibleVoterIds,
   leaders,
   type NamedParticipant,
   type NominationLike,
@@ -259,4 +263,67 @@ test('leaderboards stay hidden until reveal and top-three includes ties', () => 
   assert.equal(visibleLeaderboard(entries, 'hidden', 'revealed').length, 0);
   assert.equal(visibleLeaderboard(entries, 'top_three', 'revealed').length, 4);
   assert.equal(visibleLeaderboard(entries, 'full', 'revealed').length, 5);
+});
+
+test('confidentiality is called determined only where arithmetic settles it', () => {
+  // One voter: the counted ballot is theirs. Two: an administrator who voted
+  // subtracts their own and the remainder is the other person's, with
+  // certainty. Three is where certainty stops, so it must not claim otherwise.
+  for (const count of [0, 1, 2]) {
+    assert.equal(
+      assessConfidentiality(count).level,
+      'determined',
+      `n=${count}`,
+    );
+  }
+  assert.equal(assessConfidentiality(3).level, 'weak');
+});
+
+test('confidentiality warns below the threshold and stops at it', () => {
+  for (let count = 0; count < CONFIDENTIALITY_WARNING_THRESHOLD; count += 1) {
+    const assessment = assessConfidentiality(count);
+    assert.equal(assessment.warn, true, `n=${count} should warn`);
+    assert.notEqual(assessment.message, null, `n=${count} needs wording`);
+  }
+
+  // The boundary itself must be quiet, otherwise the threshold is really 9.
+  const atThreshold = assessConfidentiality(CONFIDENTIALITY_WARNING_THRESHOLD);
+  assert.equal(atThreshold.level, 'standard');
+  assert.equal(atThreshold.warn, false);
+  assert.equal(atThreshold.message, null);
+  assert.equal(assessConfidentiality(250).warn, false);
+});
+
+test('confidentiality tolerates counts that are not whole positive numbers', () => {
+  assert.equal(assessConfidentiality(-4).eligibleVoters, 0);
+  assert.equal(assessConfidentiality(8.9).eligibleVoters, 8);
+  assert.equal(assessConfidentiality(8.9).warn, false);
+  assert.equal(assessConfidentiality(Number.NaN).eligibleVoters, 0);
+  assert.equal(assessConfidentiality(Number.POSITIVE_INFINITY).warn, true);
+});
+
+test('roster confidentiality counts only linked, vote-eligible participants', () => {
+  const mixedRoster = [
+    participant('a'),
+    participant('b'),
+    participant('c', { canVote: false }), // ineligible
+    participant('d', { userId: null }), // invited, never accepted
+    participant('e', { canVote: false, userId: null }),
+  ];
+
+  assert.equal(eligibleVoterIds(mixedRoster).size, 2);
+
+  // Five roster entries look reassuring. Only two can actually vote, and it is
+  // the voters that determine whether a ballot can be deduced.
+  const assessment = assessRosterConfidentiality(mixedRoster);
+  assert.equal(assessment.eligibleVoters, 2);
+  assert.equal(assessment.level, 'determined');
+  assert.equal(assessment.warn, true);
+});
+
+test('a roster large enough to be quiet stays quiet', () => {
+  const wideRoster = Array.from({ length: 8 }, (_, index) =>
+    participant(`p${index}`),
+  );
+  assert.equal(assessRosterConfidentiality(wideRoster).warn, false);
 });
