@@ -45,15 +45,25 @@ export interface MyNomination {
 }
 
 /**
- * The caller's organisations. A user may belong to more than one, and v1 works
- * with the first, but the shape returns all of them so switching does not need
- * this rewritten.
+ * The caller's own organisations and roles.
+ *
+ * The `user_id` filter is essential and was missing at first. RLS on
+ * organisation_members permits reading every membership row in the caller's
+ * organisations, not only their own, because roles are legitimately visible
+ * inside a tenant. Without the filter this returned all five colleagues and the
+ * screen took the first row's role as the caller's, which showed a plain member
+ * an administrator link.
+ *
+ * Nothing was exposed that the policy did not already allow. The bug was the
+ * assumption that "what RLS returns" and "what is mine" are the same set, which
+ * for this table they deliberately are not.
  */
-export async function listMemberships(): Promise<Membership[]> {
+export async function listMemberships(userId: string): Promise<Membership[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from('organisation_members')
     .select('role, organisations(id, name, timezone)')
+    .eq('user_id', userId)
     .eq('status', 'active');
 
   if (error) throw error;

@@ -1262,3 +1262,69 @@ string column on the table.
 Sign-up, verification resend and recovery. Timezone-correct dates. Search on the
 nominee list. An explicit confirmation step before submitting. Everything
 administrator-facing.
+
+---
+
+# The administrator screen, and a bug that mattered
+
+Date: 26 July 2026
+
+An owner can now create a cycle, open it, watch turnout, close it, moderate what
+was written, see standings and reveal a winner including a tie. Driven in a
+browser against the seed, not asserted.
+
+## The confidentiality warning finally has a home
+
+`UI-CONF-01` sat open because the member screen cannot compute it: `can_vote` is
+withheld from the roster grant, so a member cannot count eligible voters. That
+was the correct answer all along. The count is available to an administrator
+through `get_cycle_turnout`, so the warning belongs there.
+
+It renders as a full card with `accessibilityRole="alert"`, not help text.
+`D-022` is about not implying a protection the arithmetic cannot support, and a
+footnote implies exactly that. Verified against the seed: Alpha has four eligible
+voters and shows the warning.
+
+## Verified by doing it
+
+Opened the July cycle and turnout read four eligible, two voted, fifty per cent,
+matching the seed exactly. While open, the screen said plainly that no standings
+exist for anybody rather than showing an empty panel that looks like a failure.
+
+Closed it, and standings appeared with shared competition ranks: two people tied
+on one nomination each, both rank 1, next rank 3. The tie path engaged, the
+reveal action stayed disabled until a joint leader was chosen and a note written,
+and afterwards the member screen showed the winner and the reasoning.
+
+The nominations list showed reasons ordered by nominee name with a date and no
+time, and the moderation controls disappeared once the cycle was revealed.
+
+## The bug
+
+The administrator link appeared for a plain member.
+
+`listMemberships` selected from `organisation_members` filtered only by
+`status = 'active'`, on the assumption that RLS would return the caller's own
+row. It does not. The policy deliberately permits reading every membership in
+the caller's organisations, because roles are legitimately visible inside a
+tenant. So the query returned all five colleagues and the screen read the first
+row's role as its own.
+
+Nothing was exposed that the policy did not already allow, and pressing the link
+would have achieved nothing, because every function behind it checks the caller's
+role in the database. It was a display fault, not a breach.
+
+The lesson is the part worth keeping: **what RLS returns and what belongs to the
+caller are not the same set**, and for this table they are deliberately
+different. A query that needs "mine" has to say so. Fixed by filtering on the
+signed-in user id.
+
+It is also a good argument for having built the screen rather than reasoning
+about it. Nothing in the tests would have caught this, because the tests assert
+what the database returns, and the database was right.
+
+## Not done
+
+Roster management, invitations from the interface, scheduled open and close
+times, and an operator-entered moderation reason rather than the current fixed
+wording.

@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -47,7 +48,7 @@ const EMPTY: Loaded = {
 };
 
 export default function CycleScreen() {
-  const { signOut } = useSession();
+  const { session, signOut } = useSession();
   const [data, setData] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +59,9 @@ export default function CycleScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const memberships = await listMemberships();
+      const userId = session?.user.id;
+      if (!userId) return;
+      const memberships = await listMemberships(userId);
       const membership = memberships[0] ?? null;
       if (!membership) {
         setData(EMPTY);
@@ -92,7 +95,7 @@ export default function CycleScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     void load();
@@ -169,13 +172,23 @@ export default function CycleScreen() {
                 'EMPLOYEE OF THE MONTH'}
             </Text>
           </View>
-          <Pressable
-            accessibilityLabel="Sign out"
-            accessibilityRole="button"
-            onPress={() => void signOut()}
-          >
-            <Text style={styles.signOut}>Sign out</Text>
-          </Pressable>
+          <View style={styles.topActions}>
+            {/* Shown by role for convenience only. The admin screen's own
+                calls are refused by the database for anyone else, so hiding
+                this link is tidiness rather than a control. */}
+            {membership?.role === 'owner' || membership?.role === 'admin' ? (
+              <Link href="/admin" style={styles.manage}>
+                Manage
+              </Link>
+            ) : null}
+            <Pressable
+              accessibilityLabel="Sign out"
+              accessibilityRole="button"
+              onPress={() => void signOut()}
+            >
+              <Text style={styles.signOut}>Sign out</Text>
+            </Pressable>
+          </View>
         </View>
 
         {error ? (
@@ -419,6 +432,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.5,
+  },
+  topActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  manage: {
+    color: colours.ink,
+    fontSize: 13,
+    fontWeight: '800',
+    padding: spacing.sm,
   },
   signOut: {
     color: colours.inkMuted,
