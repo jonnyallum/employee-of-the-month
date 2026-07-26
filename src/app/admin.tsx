@@ -163,6 +163,10 @@ export default function AdminScreen() {
         </View>
         <Text style={styles.orgName}>{membership.organisationName}</Text>
 
+        <Link href="/roster" style={styles.rosterLink}>
+          Manage roster and invitations
+        </Link>
+
         {error ? (
           <View accessibilityRole="alert" style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
@@ -509,6 +513,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -1.2,
     marginTop: spacing.sm,
+  },
+  rosterLink: {
+    color: colours.moss,
+    fontSize: 14,
+    fontWeight: '800',
+    paddingVertical: spacing.md,
   },
   title: {
     color: colours.ink,

@@ -1328,3 +1328,64 @@ what the database returns, and the database was right.
 Roster management, invitations from the interface, scheduled open and close
 times, and an operator-entered moderation reason rather than the current fixed
 wording.
+
+---
+
+# Roster management, and the invitation gap
+
+Date: 26 July 2026
+
+An administrator can now add people, set eligibility and create invitations from
+the interface. Onboarding a new organisation no longer needs SQL, with one real
+exception described below.
+
+## Why the roster needed new functions
+
+The client column grant on `participants` withholds `user_id` and `can_vote`
+from every authenticated caller, administrators included. That is right for the
+list a member sees and it makes managing a roster impossible through the table,
+so management became a shaped admin-only surface.
+
+Showing an administrator `can_vote` deserves stating, since `T2` gives it as a
+reason to withhold the column from members. An administrator sets eligibility.
+They cannot run a programme without knowing who can vote in it, and they already
+receive reasons once a cycle closes. Withholding it from them would protect
+nothing and make the job impossible. What they still never receive is which
+eligible voter wrote which reason, and that boundary is unchanged.
+
+`get_roster` returns `has_account` as a boolean rather than the user id. Whether
+somebody has joined is roster state an administrator needs; the auth identity
+behind it is not, and a boolean cannot be joined to anything.
+
+## The invitation token is deliberately thrown away
+
+`create_invitation` returns the only readable copy of the token, and the screen
+discards it.
+
+A token is a working identity for the invited person. Rendering one in an
+administrator's browser puts it in screenshots, in scroll-back and in anything
+that captures the page, and the invited person still does not have it. The only
+sensible consumer is the trusted mail function of `COM-001`.
+
+So **onboarding is incomplete**: an invitation can be created and nobody can
+accept it, because nothing sends the email. The screen says exactly that rather
+than reporting success and leaving somebody to discover it. A token on screen
+would have made this demo work today and been the wrong thing to build.
+
+## A small honesty in the interface
+
+An unlinked participant shows `Can vote` as on, because the stored flag is true,
+with the toggle disabled and the reason written next to it. The alternative was
+showing it off, which would misrepresent what the database holds. The flag is
+set; the account linkage is what is missing, and saying so is more useful than a
+switch that silently lies in either direction.
+
+## Verified
+
+Read the roster against the seed and checked the toggle states rather than the
+labels: the nominate-only participant's vote switch is genuinely off, and the
+unlinked participant's is disabled. Added somebody through the form and they
+appeared with no account and an invite action. 233 assertions pass, including 17
+new ones covering who may read a roster, who may change eligibility, and that
+the audit records the old and new value rather than merely that something
+changed.

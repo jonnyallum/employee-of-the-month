@@ -183,3 +183,90 @@ export function describeAdminError(error: unknown): string {
       : '';
   return MESSAGES[hint] ?? 'Something went wrong. Please try again.';
 }
+
+export interface RosterEntry {
+  id: string;
+  displayName: string;
+  team: string | null;
+  active: boolean;
+  canVote: boolean;
+  canReceive: boolean;
+  hasAccount: boolean;
+  invitedEmail: string | null;
+  invitationExpiresAt: string | null;
+}
+
+export async function loadRoster(
+  organisationId: string,
+): Promise<RosterEntry[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.rpc('get_roster', {
+    target_organisation_id: organisationId,
+  });
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    team: row.team,
+    active: row.active,
+    canVote: row.can_vote,
+    canReceive: row.can_receive,
+    hasAccount: row.has_account,
+    invitedEmail: row.invited_email,
+    invitationExpiresAt: row.invitation_expires_at,
+  }));
+}
+
+export async function addParticipant(
+  organisationId: string,
+  displayName: string,
+  team: string,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const trimmedTeam = team.trim();
+  const { error } = await client.rpc('add_participant', {
+    target_organisation_id: organisationId,
+    display_name: displayName,
+    ...(trimmedTeam === '' ? {} : { team: trimmedTeam }),
+  });
+  if (error) throw error;
+}
+
+export async function updateParticipant(
+  participantId: string,
+  next: { active: boolean; canVote: boolean; canReceive: boolean },
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.rpc('update_participant', {
+    target_participant_id: participantId,
+    active: next.active,
+    can_vote: next.canVote,
+    can_receive: next.canReceive,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Creates an invitation. The raw token is deliberately discarded here rather
+ * than returned to the screen.
+ *
+ * A token is a working identity for the invited person. Rendering one in an
+ * administrator's browser puts it in screenshots, in scroll-back and in
+ * anything that captures the page, and the invited person still would not have
+ * it. The only sensible consumer is the trusted mail function of COM-001, which
+ * does not exist yet, so for now this records the invitation and nothing can
+ * redeem it. That gap is real and is better than a token on screen.
+ */
+export async function inviteParticipant(
+  participantId: string,
+  email: string,
+): Promise<string> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.rpc('create_invitation', {
+    target_participant_id: participantId,
+    invited_email: email,
+  });
+  if (error) throw error;
+  return (data ?? [])[0]?.expires_at ?? '';
+}

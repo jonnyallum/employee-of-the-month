@@ -621,6 +621,14 @@ export type Database = {
     }
     Functions: {
       accept_invitation: { Args: { token: string }; Returns: string }
+      add_participant: {
+        Args: {
+          display_name: string
+          target_organisation_id: string
+          team?: string
+        }
+        Returns: string
+      }
       cast_nomination: {
         Args: {
           idempotency_key?: string
@@ -707,6 +715,20 @@ export type Database = {
           team: string
         }[]
       }
+      get_roster: {
+        Args: { target_organisation_id: string }
+        Returns: {
+          active: boolean
+          can_receive: boolean
+          can_vote: boolean
+          display_name: string
+          has_account: boolean
+          id: string
+          invitation_expires_at: string
+          invited_email: string
+          team: string
+        }[]
+      }
       moderate_nomination: {
         Args: {
           action: string
@@ -735,6 +757,15 @@ export type Database = {
           target_cycle_id: string
         }
         Returns: number
+      }
+      update_participant: {
+        Args: {
+          active: boolean
+          can_receive: boolean
+          can_vote: boolean
+          target_participant_id: string
+        }
+        Returns: undefined
       }
       withdraw_nomination: {
         Args: { target_cycle_id: string }
