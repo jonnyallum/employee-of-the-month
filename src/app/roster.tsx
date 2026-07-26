@@ -248,11 +248,14 @@ export default function RosterScreen() {
                     disabled={busy || inviteEmail.trim() === ''}
                     onPress={() =>
                       void run(async () => {
-                        await inviteParticipant(person.id, inviteEmail);
+                        const result = await inviteParticipant(
+                          person.id,
+                          inviteEmail,
+                        );
                         setInviting(null);
                         setInviteEmail('');
                         setNotice(
-                          'Invitation created. Sending the email is not built yet, so nobody can accept it until COM-001 lands.',
+                          `Invitation emailed. It works once and expires on ${new Date(result.expiresAt).toDateString()}.`,
                         );
                       })
                     }

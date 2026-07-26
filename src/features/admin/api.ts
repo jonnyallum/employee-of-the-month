@@ -174,6 +174,10 @@ const MESSAGES: Record<string, string> = {
   cycle_exists: 'A cycle already exists for that month.',
   reason_required: 'Give a reason for hiding this nomination.',
   use_reveal_winner: 'Use the reveal action to publish a result.',
+  send_failed:
+    'The invitation was created but the email could not be sent. Try again.',
+  already_linked: 'That person already has an account.',
+  invalid_email: 'That email address does not look right.',
 };
 
 export function describeAdminError(error: unknown): string {
@@ -248,25 +252,35 @@ export async function updateParticipant(
 }
 
 /**
- * Creates an invitation. The raw token is deliberately discarded here rather
- * than returned to the screen.
+ * Asks the server to create an invitation and email it.
  *
- * A token is a working identity for the invited person. Rendering one in an
- * administrator's browser puts it in screenshots, in scroll-back and in
- * anything that captures the page, and the invited person still would not have
- * it. The only sensible consumer is the trusted mail function of COM-001, which
- * does not exist yet, so for now this records the invitation and nothing can
- * redeem it. That gap is real and is better than a token on screen.
+ * This calls an Edge Function rather than the RPC directly, and the reason is
+ * the token. `create_invitation` returns the only readable copy; if the browser
+ * called it, that token would exist in the client, in devtools and in anything
+ * that captures a response. The function creates it, emails it and discards it,
+ * and the caller learns only when it expires.
+ *
+ * Authorisation is unchanged: the function calls the same RPC with this user's
+ * own JWT, so the database applies the same owner-or-admin check.
  */
 export async function inviteParticipant(
   participantId: string,
   email: string,
-): Promise<string> {
+): Promise<{ expiresAt: string; alreadySent: boolean }> {
   const client = getSupabaseClient();
-  const { data, error } = await client.rpc('create_invitation', {
-    target_participant_id: participantId,
-    invited_email: email,
+  const { data, error } = await client.functions.invoke('send-invitation', {
+    body: { participantId, email: email.trim().toLowerCase() },
   });
-  if (error) throw error;
-  return (data ?? [])[0]?.expires_at ?? '';
+
+  if (error) {
+    // The function forwards the database's own product code, so the same
+    // wording is shown whether the refusal came from here or from a direct call.
+    const context = (error as { context?: { hint?: string } }).context;
+    throw { hint: context?.hint ?? 'send_failed' };
+  }
+
+  return {
+    expiresAt: String(data?.expiresAt ?? ''),
+    alreadySent: Boolean(data?.alreadySent),
+  };
 }

@@ -1389,3 +1389,74 @@ appeared with no account and an invite action. 233 assertions pass, including 17
 new ones covering who may read a roster, who may change eligibility, and that
 the audit records the old and new value rather than merely that something
 changed.
+
+---
+
+# COM-001: the invitation email
+
+Date: 26 July 2026
+
+Onboarding is complete. An owner invites somebody from the roster screen, the
+email arrives with a working link, and that person signs up and joins. Proved end
+to end against the local stack, including that a replayed token is refused.
+
+## Why an Edge Function rather than the RPC
+
+`create_invitation` returns the only readable copy of the token. If the browser
+called it, that token would exist in the client, in devtools and in anything
+that captures a response, and the invited person still would not have it. The
+function creates it, emails it and discards it; the caller learns only when it
+expires.
+
+Authorisation is not reimplemented. The function calls the same RPC with the
+**caller's own JWT**, so the database applies the same owner-or-admin check as
+everywhere else. A bug in that file cannot grant anybody more than they already
+had, which is the reason to do it that way rather than checking a role in
+TypeScript. Confirmed: a plain member gets `permission_denied`, an unauthenticated
+request gets `401`, and only the owner succeeded.
+
+## Three faults, each hiding the next
+
+**`service_role` could not write anything.** Every table gave it `REFERENCES`,
+`TRIGGER` and `TRUNCATE` and no DML, so the first server-side write failed with
+`42501`. The trap is that `BYPASSRLS` and a table privilege are different things:
+the attribute exempts a role from *policies*, and without a `GRANT` there is
+nothing to be exempt from. Every test had passed because nothing server-side had
+tried to write yet.
+
+Fixed with a migration granting exactly two tables and only the verbs used, not
+`grant all on all tables`. Handing the trusted role the ballot table would move
+away from `D-025`, not toward it. `001` now pins that surface too, so the next
+addition is a visible decision.
+
+**My own error handling hid it.** The claim insert treated *any* failure as
+"already sent", so a broken delivery record reported success and no email was
+sent. Only a `23505` means already sent; anything else is a fault and now says
+so.
+
+**My logging hid the next one.** The send failure logged `error.name`, which is
+the word "Error" for almost everything. Logging the message properly needed care,
+because an SMTP error usually quotes the envelope: addresses are stripped before
+anything is written, which is what `COM-001` means by redacted logs.
+
+The real message was then obvious: the mail library refused to authenticate over
+a plaintext connection to the local catcher.
+
+## No mail library
+
+Both transports are now a single `fetch`: Resend's HTTP API in production, the
+local catcher's send endpoint in development. A dependency inside a function
+that handles invitation tokens is a dependency with access to invitation tokens,
+and the one tried first would not talk to a local catcher at all.
+
+Being straight about the trade: the local transport exercises this function, the
+template and the token flow. It does not exercise Resend. Only a real send does,
+which is `INF-016`.
+
+## Verified
+
+Owner invited; the message arrived at the catcher from
+`recognition@jonnyai.co.uk` with the right subject and a 64-character token in
+the link. The invited person signed up, accepted, and became a linked active
+member. Replaying the same token returned `invitation_consumed`. The delivery
+record shows `sent` against an idempotency key derived from the invitation.
