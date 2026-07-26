@@ -697,6 +697,16 @@ export type Database = {
           status: string
         }[]
       }
+      get_my_participant: {
+        Args: { target_organisation_id: string }
+        Returns: {
+          can_receive: boolean
+          can_vote: boolean
+          display_name: string
+          id: string
+          team: string
+        }[]
+      }
       moderate_nomination: {
         Args: {
           action: string

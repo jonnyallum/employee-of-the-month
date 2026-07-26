@@ -1,43 +1,157 @@
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { periodLabel, turnout } from '@/domain/recognition/engine';
-import { hasPublicEnvironment } from '@/lib/env';
+import { periodLabel, REASON_MAX_LENGTH } from '@/domain/recognition/engine';
+import {
+  type Cycle,
+  castNomination,
+  describeError,
+  listMemberships,
+  listNominees,
+  loadCurrentCycle,
+  loadMyNomination,
+  type Membership,
+  type MyNomination,
+  type Nominee,
+  withdrawNomination,
+} from '@/features/recognition/api';
+import { getSupabaseClient } from '@/lib/supabase';
+import { useSession } from '@/state/session';
 import { colours, radii, spacing } from '@/theme/tokens';
 
-const previewParticipants = [
-  { id: 'a', userId: 'user-a', canVote: true, canReceive: true },
-  { id: 'b', userId: 'user-b', canVote: true, canReceive: true },
-  { id: 'c', userId: 'user-c', canVote: true, canReceive: true },
-  { id: 'd', userId: null, canVote: false, canReceive: true },
-] as const;
+interface Loaded {
+  membership: Membership | null;
+  cycle: Cycle | null;
+  nominees: Nominee[];
+  myParticipantId: string | null;
+  canVote: boolean;
+  mine: MyNomination | null;
+}
 
-const previewNominations = [
-  {
-    id: 'n-1',
-    cycleId: 'cycle-july',
-    nominatorUserId: 'user-a',
-    nomineeParticipantId: 'b',
-    reason: 'Made every handover easier this month.',
-    status: 'active',
-  },
-  {
-    id: 'n-2',
-    cycleId: 'cycle-july',
-    nominatorUserId: 'user-b',
-    nomineeParticipantId: 'c',
-    reason: 'Stepped in when the team needed help.',
-    status: 'active',
-  },
-] as const;
+const EMPTY: Loaded = {
+  membership: null,
+  cycle: null,
+  nominees: [],
+  myParticipantId: null,
+  canVote: false,
+  mine: null,
+};
 
-export default function HomeScreen() {
-  const previewTurnout = useMemo(
-    () => turnout(previewParticipants, previewNominations, 'cycle-july'),
-    [],
+export default function CycleScreen() {
+  const { signOut } = useSession();
+  const [data, setData] = useState<Loaded>(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const memberships = await listMemberships();
+      const membership = memberships[0] ?? null;
+      if (!membership) {
+        setData(EMPTY);
+        return;
+      }
+
+      const client = getSupabaseClient();
+      const [cycle, nominees, participantResult] = await Promise.all([
+        loadCurrentCycle(membership.organisationId),
+        listNominees(membership.organisationId),
+        client.rpc('get_my_participant', {
+          target_organisation_id: membership.organisationId,
+        }),
+      ]);
+
+      const me = (participantResult.data ?? [])[0] ?? null;
+      const mine = cycle ? await loadMyNomination(cycle.id) : null;
+
+      setData({
+        membership,
+        cycle,
+        nominees,
+        myParticipantId: me?.id ?? null,
+        canVote: me?.can_vote ?? false,
+        mine,
+      });
+      setSelected(mine?.nomineeParticipantId ?? null);
+      setReason(mine?.reason ?? '');
+    } catch (caught) {
+      setError(describeError(caught));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // The database refuses a self-nomination anyway. Filtering here means the
+  // interface never offers a choice that would be rejected.
+  const choosable = useMemo(
+    () => data.nominees.filter((n) => n.id !== data.myParticipantId),
+    [data.nominees, data.myParticipantId],
   );
-  const isConfigured = hasPublicEnvironment();
+
+  async function submit() {
+    if (!data.cycle || !selected || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await castNomination({
+        cycleId: data.cycle.id,
+        nomineeParticipantId: selected,
+        reason,
+        // Stable for this cycle and voter, so a retry after a dropped
+        // connection returns the original ballot rather than being refused as
+        // a second one.
+        idempotencyKey: `${data.cycle.id}:${data.myParticipantId}`,
+      });
+      await load();
+    } catch (caught) {
+      setError(describeError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function withdraw() {
+    if (!data.cycle || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await withdrawNomination(data.cycle.id);
+      setSelected(null);
+      setReason('');
+      await load();
+    } catch (caught) {
+      setError(describeError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centre}>
+        <ActivityIndicator color={colours.forest} />
+      </SafeAreaView>
+    );
+  }
+
+  const { membership, cycle, mine } = data;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -45,113 +159,251 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.eyebrowRow}>
-          <View style={styles.mark}>
-            <Text style={styles.markText}>E</Text>
-          </View>
-          <Text style={styles.brand}>EMPLOYEE OF THE MONTH</Text>
-        </View>
-
-        <View style={styles.hero}>
-          <Text style={styles.kicker}>{periodLabel('2026-07-01')}</Text>
-          <Text style={styles.title}>Make good work visible.</Text>
-          <Text style={styles.subtitle}>
-            One fair nomination per person. A clear monthly winner. Recognition
-            that feels earned.
-          </Text>
-        </View>
-
-        <View style={styles.cycleCard}>
-          <View style={styles.cardTopRow}>
-            <View>
-              <Text style={styles.cardLabel}>NOMINATIONS OPEN</Text>
-              <Text style={styles.cardTitle}>July recognition</Text>
+        <View style={styles.topRow}>
+          <View style={styles.brandRow}>
+            <View style={styles.mark}>
+              <Text style={styles.markText}>E</Text>
             </View>
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${previewTurnout.turnoutPct}%` },
-              ]}
-            />
-          </View>
-
-          <View style={styles.progressCopy}>
-            <Text style={styles.progressStrong}>
-              {previewTurnout.cast} of {previewTurnout.canVote}
+            <Text style={styles.brand}>
+              {membership?.organisationName?.toUpperCase() ??
+                'EMPLOYEE OF THE MONTH'}
             </Text>
-            <Text style={styles.progressMuted}>people have nominated</Text>
           </View>
-
           <Pressable
+            accessibilityLabel="Sign out"
             accessibilityRole="button"
-            accessibilityLabel="Choose a colleague to nominate"
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.primaryButtonPressed,
-            ]}
+            onPress={() => void signOut()}
           >
-            <Text style={styles.primaryButtonText}>Choose a colleague</Text>
-            <Text style={styles.arrow}>→</Text>
+            <Text style={styles.signOut}>Sign out</Text>
           </Pressable>
         </View>
 
-        <View style={styles.principleRow}>
-          <View style={styles.principle}>
-            <Text style={styles.principleNumber}>01</Text>
-            <Text style={styles.principleTitle}>Private ballot</Text>
-            <Text style={styles.principleBody}>
-              Colleagues see the result, never who voted for whom.
-            </Text>
+        {error ? (
+          <View accessibilityRole="alert" style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-          <View style={styles.principle}>
-            <Text style={styles.principleNumber}>02</Text>
-            <Text style={styles.principleTitle}>Fair by design</Text>
-            <Text style={styles.principleBody}>
-              One vote each, no self-voting, with ties handled openly.
-            </Text>
-          </View>
-        </View>
+        ) : null}
 
-        <View style={styles.buildStatus}>
-          <View
-            style={[
-              styles.statusDot,
-              isConfigured ? styles.statusReady : styles.statusLocal,
-            ]}
+        {!membership ? (
+          <EmptyState
+            body="You are signed in but not part of an organisation. Ask whoever runs your programme to invite this email address."
+            title="No organisation yet"
           />
-          <Text style={styles.buildStatusText}>
-            {isConfigured
-              ? 'Backend configuration detected'
-              : 'Local foundation preview'}
-          </Text>
-        </View>
+        ) : !cycle ? (
+          <EmptyState
+            body="Your organisation has not opened a recognition month. You will be told when it does."
+            title="Nothing running yet"
+          />
+        ) : (
+          <>
+            <View style={styles.hero}>
+              <Text style={styles.kicker}>
+                {periodLabel(cycle.periodMonth)}
+              </Text>
+              <Text style={styles.title}>
+                {cycle.status === 'revealed'
+                  ? 'The result is in.'
+                  : cycle.status === 'open'
+                    ? 'Make good work visible.'
+                    : 'Nominations are closed.'}
+              </Text>
+              {cycle.criteria ? (
+                <Text style={styles.subtitle}>{cycle.criteria}</Text>
+              ) : null}
+            </View>
+
+            {cycle.status === 'revealed' ? (
+              <View style={styles.winnerCard}>
+                <Text style={styles.cardLabel}>THIS MONTH</Text>
+                <Text style={styles.winnerName}>{cycle.winnerName}</Text>
+                <Text style={styles.winnerCount}>
+                  {cycle.winnerNominations} nomination
+                  {cycle.winnerNominations === 1 ? '' : 's'}
+                </Text>
+                {cycle.tieDecisionNote ? (
+                  <View style={styles.tieNote}>
+                    <Text style={styles.tieNoteLabel}>
+                      HOW THE TIE WAS DECIDED
+                    </Text>
+                    <Text style={styles.tieNoteText}>
+                      {cycle.tieDecisionNote}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : cycle.status === 'closed' ? (
+              <View style={styles.quietCard}>
+                <Text style={styles.quietTitle}>Counting up</Text>
+                <Text style={styles.quietBody}>
+                  Voting has closed. The result will appear here once it is
+                  revealed.
+                </Text>
+              </View>
+            ) : !data.canVote ? (
+              <View style={styles.quietCard}>
+                <Text style={styles.quietTitle}>
+                  You are not voting this month
+                </Text>
+                <Text style={styles.quietBody}>
+                  You can still be nominated by colleagues. Speak to your
+                  programme administrator if you think this is wrong.
+                </Text>
+              </View>
+            ) : mine ? (
+              <View style={styles.chosenCard}>
+                <Text style={styles.cardLabel}>YOUR NOMINATION</Text>
+                <Text style={styles.chosenName}>{mine.nomineeDisplayName}</Text>
+                {mine.reason ? (
+                  <Text style={styles.chosenReason}>{mine.reason}</Text>
+                ) : null}
+                <Text style={styles.chosenNote}>
+                  Only you can see this. You can change it until nominations
+                  close.
+                </Text>
+                <Pressable
+                  accessibilityLabel="Change my nomination"
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: submitting }}
+                  disabled={submitting}
+                  onPress={() => void withdraw()}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {submitting ? 'Working…' : 'Change my nomination'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.sectionLabel}>CHOOSE A COLLEAGUE</Text>
+                <View style={styles.list}>
+                  {choosable.map((nominee) => {
+                    const isSelected = selected === nominee.id;
+                    return (
+                      <Pressable
+                        accessibilityLabel={`Nominate ${nominee.displayName}`}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isSelected }}
+                        key={nominee.id}
+                        onPress={() => setSelected(nominee.id)}
+                        style={({ pressed }) => [
+                          styles.nominee,
+                          isSelected && styles.nomineeSelected,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <View style={styles.nomineeText}>
+                          <Text
+                            style={[
+                              styles.nomineeName,
+                              isSelected && styles.nomineeNameSelected,
+                            ]}
+                          >
+                            {nominee.displayName}
+                          </Text>
+                          {nominee.team ? (
+                            <Text
+                              style={[
+                                styles.nomineeTeam,
+                                isSelected && styles.nomineeTeamSelected,
+                              ]}
+                            >
+                              {nominee.team}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {/* A tick as well as colour: colour must never carry
+                            state on its own. */}
+                        {isSelected ? <Text style={styles.tick}>✓</Text> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.sectionLabel}>WHY? (OPTIONAL)</Text>
+                <TextInput
+                  accessibilityLabel="Why are you nominating them? Optional."
+                  maxLength={REASON_MAX_LENGTH}
+                  multiline
+                  onChangeText={setReason}
+                  placeholder="What did they actually do?"
+                  placeholderTextColor={colours.inkMuted}
+                  style={styles.reasonInput}
+                  value={reason}
+                />
+                <Text style={styles.counter}>
+                  {reason.length}/{REASON_MAX_LENGTH}. Please do not include
+                  health, disciplinary or other sensitive details.
+                </Text>
+
+                <Pressable
+                  accessibilityLabel="Submit nomination"
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    busy: submitting,
+                    disabled: !selected || submitting,
+                  }}
+                  disabled={!selected || submitting}
+                  onPress={() => void submit()}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    (!selected || submitting) && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color={colours.ink} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>
+                      Submit nomination
+                    </Text>
+                  )}
+                </Pressable>
+
+                <Text style={styles.footnote}>
+                  One nomination each. No live results: nobody sees who is ahead
+                  until the month closes.
+                </Text>
+              </>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={styles.quietCard}>
+      <Text style={styles.quietTitle}>{title}</Text>
+      <Text style={styles.quietBody}>{body}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
+  safeArea: { backgroundColor: colours.canvas, flex: 1 },
+  centre: {
+    alignItems: 'center',
     backgroundColor: colours.canvas,
+    flex: 1,
+    justifyContent: 'center',
   },
   content: {
-    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
-  },
-  eyebrowRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  brandRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   mark: {
     alignItems: 'center',
     backgroundColor: colours.forest,
@@ -160,53 +412,120 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 32,
   },
-  markText: {
-    color: colours.lime,
-    fontSize: 17,
-    fontWeight: '800',
-  },
+  markText: { color: colours.lime, fontSize: 17, fontWeight: '800' },
   brand: {
     color: colours.ink,
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
-  hero: {
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.xxl,
+  signOut: {
+    color: colours.inkMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    padding: spacing.sm,
   },
+  hero: { paddingBottom: spacing.lg, paddingTop: spacing.xl },
   kicker: {
     color: colours.moss,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.2,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     textTransform: 'uppercase',
   },
   title: {
     color: colours.ink,
-    fontSize: 46,
+    fontSize: 38,
     fontWeight: '800',
-    letterSpacing: -2.1,
-    lineHeight: 49,
-    maxWidth: 340,
+    letterSpacing: -1.6,
+    lineHeight: 42,
   },
   subtitle: {
     color: colours.inkMuted,
-    fontSize: 17,
-    lineHeight: 26,
+    fontSize: 16,
+    lineHeight: 24,
     marginTop: spacing.md,
-    maxWidth: 355,
   },
-  cycleCard: {
+  sectionLabel: {
+    color: colours.moss,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  list: { gap: spacing.sm },
+  nominee: {
+    alignItems: 'center',
+    backgroundColor: colours.surface,
+    borderColor: colours.line,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 58,
+    paddingHorizontal: spacing.md,
+  },
+  nomineeSelected: {
+    backgroundColor: colours.forest,
+    borderColor: colours.forest,
+  },
+  nomineeText: { flexShrink: 1 },
+  nomineeName: { color: colours.ink, fontSize: 16, fontWeight: '700' },
+  nomineeNameSelected: { color: colours.white },
+  nomineeTeam: { color: colours.inkMuted, fontSize: 13, marginTop: 2 },
+  nomineeTeamSelected: { color: '#A9B9B3' },
+  tick: { color: colours.lime, fontSize: 20, fontWeight: '800' },
+  reasonInput: {
+    backgroundColor: colours.surface,
+    borderColor: colours.line,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: colours.ink,
+    fontSize: 16,
+    minHeight: 104,
+    padding: spacing.md,
+    textAlignVertical: 'top',
+  },
+  counter: {
+    color: colours.inkMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: spacing.sm,
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colours.lime,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    minHeight: 58,
+  },
+  primaryButtonText: { color: colours.ink, fontSize: 16, fontWeight: '800' },
+  secondaryButton: {
+    alignItems: 'center',
+    borderColor: colours.lime,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    minHeight: 58,
+  },
+  secondaryButtonText: { color: colours.lime, fontSize: 15, fontWeight: '800' },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.82 },
+  footnote: {
+    color: colours.inkMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: spacing.lg,
+  },
+  winnerCard: {
     backgroundColor: colours.forest,
     borderRadius: radii.lg,
     padding: spacing.lg,
-  },
-  cardTopRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
   },
   cardLabel: {
     color: colours.lime,
@@ -214,137 +533,79 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1.1,
   },
-  cardTitle: {
+  winnerName: {
     color: colours.white,
-    fontSize: 25,
-    fontWeight: '700',
-    letterSpacing: -0.6,
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -1,
     marginTop: spacing.sm,
   },
-  livePill: {
-    alignItems: 'center',
-    backgroundColor: '#254B41',
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+  winnerCount: { color: '#A9B9B3', fontSize: 14, marginTop: spacing.xs },
+  tieNote: {
+    borderTopColor: '#32564C',
+    borderTopWidth: 1,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
   },
-  liveDot: {
-    backgroundColor: colours.lime,
-    borderRadius: radii.pill,
-    height: 7,
-    width: 7,
-  },
-  liveText: {
-    color: colours.white,
+  tieNoteLabel: {
+    color: '#A9B9B3',
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   },
-  progressTrack: {
-    backgroundColor: '#32564C',
-    borderRadius: radii.pill,
-    height: 8,
-    marginTop: spacing.xl,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    backgroundColor: colours.lime,
-    borderRadius: radii.pill,
-    height: '100%',
-  },
-  progressCopy: {
-    alignItems: 'baseline',
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: spacing.sm,
-  },
-  progressStrong: {
+  tieNoteText: {
     color: colours.white,
     fontSize: 14,
-    fontWeight: '700',
+    lineHeight: 21,
+    marginTop: spacing.sm,
   },
-  progressMuted: {
+  chosenCard: {
+    backgroundColor: colours.forest,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+  },
+  chosenName: {
+    color: colours.white,
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    marginTop: spacing.sm,
+  },
+  chosenReason: {
+    color: '#D5E0DB',
+    fontSize: 15,
+    fontStyle: 'italic',
+    lineHeight: 22,
+    marginTop: spacing.sm,
+  },
+  chosenNote: {
     color: '#A9B9B3',
     fontSize: 13,
+    lineHeight: 20,
+    marginTop: spacing.md,
   },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: colours.lime,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    minHeight: 58,
-    paddingHorizontal: spacing.md,
-  },
-  primaryButtonPressed: {
-    opacity: 0.82,
-  },
-  primaryButtonText: {
-    color: colours.ink,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  arrow: {
-    color: colours.ink,
-    fontSize: 24,
-    lineHeight: 24,
-  },
-  principleRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  principle: {
+  quietCard: {
     backgroundColor: colours.surface,
     borderColor: colours.line,
     borderRadius: radii.md,
     borderWidth: 1,
-    flex: 1,
-    minHeight: 174,
-    padding: spacing.md,
-  },
-  principleNumber: {
-    color: colours.moss,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  principleTitle: {
-    color: colours.ink,
-    fontSize: 16,
-    fontWeight: '700',
     marginTop: spacing.lg,
+    padding: spacing.lg,
   },
-  principleBody: {
+  quietTitle: { color: colours.ink, fontSize: 19, fontWeight: '700' },
+  quietBody: {
     color: colours.inkMuted,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 15,
+    lineHeight: 23,
     marginTop: spacing.sm,
   },
-  buildStatus: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    marginTop: spacing.xl,
+  errorBox: {
+    backgroundColor: '#FBE9E7',
+    borderColor: '#E5A99B',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    padding: spacing.md,
   },
-  statusDot: {
-    borderRadius: radii.pill,
-    height: 7,
-    width: 7,
-  },
-  statusLocal: {
-    backgroundColor: colours.amber,
-  },
-  statusReady: {
-    backgroundColor: colours.moss,
-  },
-  buildStatusText: {
-    color: colours.inkMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  errorText: { color: '#7A2E1D', fontSize: 14, lineHeight: 20 },
 });

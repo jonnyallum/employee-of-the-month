@@ -1187,3 +1187,78 @@ asserting against the seed is its whole purpose.
 ## Evidence
 
 `Files=7, Tests=216` passing, across two consecutive replays from empty.
+
+---
+
+# The first working screens
+
+Date: 26 July 2026
+
+A member can now sign in, see the current cycle, nominate a colleague, read
+their own ballot back, withdraw it and vote again. Verified by doing it in a
+browser against the local stack and then checking the database, not by asserting
+it.
+
+## Verified without an Android device
+
+`FND-010` is still blocked on Android tooling, but Expo builds for web and
+`react-native-web` is already a dependency, so the whole flow runs in the
+browser pane. That is not a substitute for a device build, and layout, gestures
+and notifications still need one. It is enough to prove the data path, the
+guards and the states are real.
+
+## What was checked, in order
+
+Signed out, the guard redirected to sign-in. Signed in as a seeded member and
+the screen showed her organisation, the July cycle, its criteria, and her own
+existing nomination with the reason from the seed. Withdrew it and the nominee
+list appeared with five colleagues and, importantly, without her. Selected
+someone else, added a reason, submitted, and the receipt came back with the new
+choice.
+
+Then, in the database: one ballot for that voter in that cycle, recorded as a
+`recast` rather than a second `cast`. That is the invariant the withdraw design
+exists to protect, and the interface honoured it.
+
+## Two things the client could not do, and why that was right
+
+**The app cannot identify its own roster entry.** `participants.user_id` is
+withheld from the client column grant, which is what stops a member joining a
+name to an auth identity. It also means the nominee list cannot filter the
+signed-in user out. Rather than widening the grant, this added
+`get_my_participant`, which returns the caller's own row only and takes the user
+from `auth.uid()`. The database refuses a self-nomination regardless, so this is
+about not offering a choice that would be rejected.
+
+**The app cannot compute the small-electorate warning.** `can_vote` is withheld
+too, so a member cannot count eligible voters. That is correct, and it places
+`UI-CONF-01` on the administrator screen, where `get_cycle_turnout` already
+returns the eligible count.
+
+## Three failures worth recording
+
+**The generated types were not wired in.** `getSupabaseClient` returned an
+untyped client, so every query compiled against nothing. Typing it with the
+generated `Database` produced twenty errors immediately, all real.
+
+**A concatenated select string silently defeated inference.** Splitting a select
+across two string literals for line length degraded the result type to an error
+type, and every field access on it stopped being checked. It has to be one
+unbroken literal.
+
+**Sign-in returned 500 from a NULL.** The seeded users could not authenticate:
+`Database error querying schema`. GoTrue scans `confirmation_token` and its
+siblings into non-nullable Go strings, so a NULL breaks the query before the
+password is ever compared. They are nullable in the schema, which is why the
+seed left them unset. Empty strings, which GoTrue's own signup path writes, fix
+it.
+
+That last one is worth remembering: the error names whichever column it reached
+first, which sends you looking at confirmation rather than at every nullable
+string column on the table.
+
+## Not done
+
+Sign-up, verification resend and recovery. Timezone-correct dates. Search on the
+nominee list. An explicit confirmation step before submitting. Everything
+administrator-facing.

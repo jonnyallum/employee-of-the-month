@@ -8,7 +8,8 @@
       "!node_modules",
       "!supabase/.temp",
       "!.expo-scaffold",
-      "!src/types/database.ts"
+      "!src/types/database.ts",
+      "!expo-env.d.ts"
     ]
   },
   "formatter": {

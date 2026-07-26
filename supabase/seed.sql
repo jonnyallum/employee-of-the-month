@@ -56,7 +56,15 @@ inserted_users as (
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password,
     email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-    created_at, updated_at
+    created_at, updated_at,
+    -- These are nullable in the schema but GoTrue scans them into
+    -- non-nullable Go strings, so a NULL makes every sign-in fail with
+    -- "Database error querying schema" and a 500. The column it names is
+    -- whichever it happens to reach first, which sends you looking in the
+    -- wrong place. Empty strings are what its own signup path writes.
+    confirmation_token, recovery_token, email_change,
+    email_change_token_new, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
   )
   select '00000000-0000-0000-0000-000000000000',
          s.id, 'authenticated', 'authenticated', s.email,
@@ -64,7 +72,8 @@ inserted_users as (
          now() - interval '90 days',
          '{"provider":"email","providers":["email"]}'::jsonb,
          jsonb_build_object('display_name', s.display_name),
-         now() - interval '90 days', now() - interval '90 days'
+         now() - interval '90 days', now() - interval '90 days',
+         '', '', '', '', '', '', '', ''
   from seeded s
   returning id, email
 )
