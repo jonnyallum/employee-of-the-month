@@ -6,15 +6,25 @@ import {
 } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
+import type { Database } from '@/types/database';
+
 import { readPublicEnvironment } from './env';
 
-let client: SupabaseClient | null = null;
+/**
+ * Typed with the generated Database, which is the point of generating it: every
+ * query and RPC is then checked against the real schema, and CI fails if the
+ * committed types drift from it. An untyped client would compile happily against
+ * columns that no longer exist.
+ */
+export type AppSupabaseClient = SupabaseClient<Database>;
 
-export function getSupabaseClient(): SupabaseClient {
+let client: AppSupabaseClient | null = null;
+
+export function getSupabaseClient(): AppSupabaseClient {
   if (client) return client;
 
   const environment = readPublicEnvironment();
-  client = createClient(
+  client = createClient<Database>(
     environment.supabaseUrl,
     environment.supabasePublishableKey,
     {

@@ -21,6 +21,7 @@
     "db:reset": "supabase db reset",
     "db:lint": "supabase db lint",
     "db:test": "supabase test db",
+    "db:types": "supabase gen types typescript --local > src/types/database.ts",
     "db:link": "powershell -NoProfile -File ./scripts/with-vault.ps1 powershell -NoProfile -Command \"./node_modules/.bin/supabase.cmd link --project-ref $env:SUPABASE_PROJECT_REF\"",
     "db:verify": "powershell -NoProfile -File ./scripts/with-vault.ps1 powershell -NoProfile -File ./scripts/verify-supabase.ps1"
   },

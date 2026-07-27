@@ -807,3 +807,656 @@ POST /rest/v1/rpc/is_org_member        as anon  -> 404   still not exposed
 
 The distinction matters. `42501` proves the function is published and locked,
 where `404` would have meant it was never reachable and the grant was untested.
+
+---
+
+# CI that actually runs (INF-007, INF-018)
+
+Date: 25 July 2026
+
+## The job
+
+A separate `database` job starts the local Supabase stack, replays every
+migration from an empty database, runs the SQL suites, then replays and re-runs
+a second time. The second pass is the whole point: a migration that only works
+against a database where an earlier version once ran passes once and fails
+there.
+
+It is kept apart from the `quality` job so a lint failure reports in seconds
+rather than waiting behind container startup.
+
+No secret is used anywhere in it. The local stack mints its own throwaway keys,
+so CI never needs access to the hosted project, and a compromised workflow
+cannot reach real data.
+
+## A step that would have proved nothing
+
+`supabase db lint` reports its findings and still exits 0 unless `--fail-on` is
+passed. As first written, the lint step would have passed whatever it found.
+It is now `--level warning --fail-on warning`, which the schema meets today.
+
+Every command in the chain was run locally in the exact order CI uses before
+being committed, rather than assumed to work.
+
+## The worse problem underneath
+
+The first push produced no run at all.
+
+PR #1 had been merged, which stopped the `pull_request` event firing, and the
+only other trigger was `push` to `main`. Eleven commits had therefore landed on
+the working branch with no checks whatsoever: the threat model, all five schema
+migrations, the RLS layer, the PKCE fix and `create_organisation`.
+
+This is the worst shape a CI gap can take. A failing run is loud. A run that
+never happens looks exactly like a green one on the branch view, and nothing
+announces it. The trigger now includes `agent/**`.
+
+Worth generalising: a green tick means the checks that ran passed. It says
+nothing about checks that did not run, and the two are easy to confuse at a
+glance.
+
+## Evidence
+
+Run `30172989614`, both jobs green in 3m55s. The log was read rather than the
+badge trusted, because the failure mode above is precisely a green result that
+means less than it appears:
+
+```text
+Applying migration ... x6, three separate times
+  (initial start, first reset, second reset)
+Files=3, Tests=92   PASS
+Files=3, Tests=92   PASS   (after the second replay)
+No schema errors found
+```
+
+## Still not merged
+
+`main` contains only the original kick-off and the PR #1 merge. All of today's
+work sits on `agent/standalone-app-planning`, unmerged. Opening a pull request
+publishes to the repository, so that decision is left to the owner.
+
+---
+
+# DB-008: invitations
+
+Date: 25 July 2026
+
+An invitation is an identity. It is the only route into an organisation, which
+makes a working token the most valuable thing in the schema, so the design
+assumes it will leak and asks what happens then.
+
+## Four properties, each enforced rather than assumed
+
+**Only a hash is stored.** A read of `organisation_invitations`, by anyone
+including a database operator, yields nothing usable. A test asserts the stored
+value is not the token and is its SHA-256, because that property silently
+disappearing would hand over a working invitation for every pending employee.
+
+**The token is bound to an intended email**, verified against `auth.users`
+rather than anything the caller supplied. This is what makes a leaked token
+worthless, and it is also what makes `create_invitation` safe to return the raw
+token to an admin: holding it achieves nothing without the mailbox.
+
+**Acceptance is one transaction**, with the invitation row locked `for update`.
+Consuming, linking and admitting happen together. If the participant turns out
+to have been linked in the meantime, the consumption rolls back too, so the
+invitation stays usable instead of being burnt for nothing.
+
+**Reissue revokes first.** Otherwise an intercepted earlier email would still be
+redeemable, which is the whole reason reissue exists.
+
+## A failing test that turned out to be a design fault
+
+The revocation test expected a wrong-email error and got "invitation was
+withdrawn". The test was wrong, but the reason it was wrong was more
+interesting: the state checks ran before the email check, so anyone holding an
+intercepted token could learn whether it had been withdrawn, used or was still
+live.
+
+That discloses another person's account lifecycle to precisely the party who
+should learn nothing. The checks are now ordered so the email binding is
+evaluated first, and a non-recipient learns one thing only: that the token is
+not theirs. The intended recipient still gets accurate, useful errors.
+
+Both cases are now asserted, so the ordering cannot regress silently.
+
+## Other deliberate choices
+
+A missing token and a wrong token raise the same error, so the function cannot
+be used to probe for valid tokens. `revoke_invitation` answers identically for
+an invitation that does not exist and one belonging to another tenant, for the
+same reason.
+
+Acceptance always creates a plain `member`. Nothing about an invitation can
+confer admin rights, which keeps role escalation out of the onboarding path
+entirely.
+
+## Evidence
+
+`Files=4, Tests=122` passing after a clean replay. The 30 for this migration
+cover the wrong-email binding, an unverified account, replay, revocation,
+reissue, cross-tenant attempts and a non-member caller.
+
+---
+
+# DB-009, DB-010, DB-011: the cycle and the ballot
+
+Date: 25 July 2026
+
+An organisation can now run a complete ballot: create a cycle, open it, cast,
+withdraw, recast, close. This is the first point where the thing behaves like the
+product rather than like infrastructure.
+
+## What the functions add that constraints cannot
+
+The table already refuses a self-nomination, a second ballot per voter, a
+cross-tenant nominee and an incoherent nominator link. Those hold against direct
+SQL. The functions carry the rules that depend on state and identity instead of
+shape:
+
+- the cycle must be open **now**;
+- the voter must be eligible **now**;
+- the voter is `auth.uid()`, never an argument, so nobody votes for anybody else;
+- `expected_version` on every transition, so two administrators pressing close
+  on the same screen produce a deterministic `40001` rather than a lost update;
+- opening validates `FR-CYCLE-02`, refusing a cycle that cannot produce a fair
+  ballot at the moment of opening rather than at close with no result.
+
+Withdrawing marks the row rather than deleting it. The voter keeps their single
+slot and a recast reuses it, which is what stops withdraw-then-vote-again
+becoming two ballots.
+
+## Two bugs the tests found
+
+**`42702`, ambiguous column reference.** The `idempotency_key` parameter shares
+its name with the column it sets, and an unqualified reference inside a statement
+that also has the table in scope is rejected. Parameters are now qualified with
+the function name. Renaming them would also have worked, at the cost of an RPC
+whose argument names no longer match the fields they set.
+
+**`now()` is constant within a transaction.** Opening and closing a cycle in one
+transaction stamped `opens_at` and `closes_at` with the identical instant and
+violated the `closes_at > opens_at` constraint. Both now use `clock_timestamp()`,
+which advances within a transaction and is the more honest value anyway: these
+record when the action happened, not when its transaction began.
+
+The second is the more interesting one. In production those are separate
+requests, so it would not have fired in normal use. It would have waited for
+some batch or backfill that did both at once, which is exactly when nobody is
+watching.
+
+## get_my_nomination
+
+The only client read path into the ballot table, and it takes no voter argument.
+There is no call shape that returns another person's ballot: not a wrong one, not
+a guessed one, none. The return type omits `nominator_user_id` even though the
+caller is the nominator, so a future change to the caller cannot start returning
+identity by accident.
+
+Asserted by having two different voters make the identical call and each receive
+their own ballot, and a third who has not voted receive nothing rather than
+somebody else's.
+
+## Evidence
+
+`Files=5, Tests=159` passing after a clean replay.
+
+---
+
+# DB-012, DB-013, DB-014: the administrator's view
+
+Date: 25 July 2026
+
+This is where the product promise is either kept or broken. An administrator
+legitimately needs to moderate content, see turnout and reveal a winner. None of
+those require knowing who voted for whom, and this migration is the proof that
+they can be provided without it.
+
+## The technique: let the return type do the work
+
+A policy can filter rows but cannot hide a column. A function's declared output
+can simply not contain the field. If voter identity is not in the type, no bug in
+the body can leak it, and a future change that tries has to alter the signature,
+which is visible in review.
+
+So the most important assertion in the project is a contract test pinning the
+exact result signature of `get_admin_nominations` by name. It fails if a column
+is added, rather than relying on somebody noticing.
+
+What an administrator gets: nomination id, nominee, reason, status, moderation
+fields, and a date. What they never get: any nominator reference, any precise
+timestamp, or any ordering that reflects insertion sequence. Results come back
+ordered by nominee name, because a time-ordered list hands back exactly the
+sequence that day-truncation exists to remove.
+
+## One definition of the tally
+
+`get_closed_standings` and `reveal_winner` both read `private.cycle_tally`. If
+they counted separately they could disagree, and an administrator would be shown
+one result while another was revealed. One definition removes the possibility
+rather than making it unlikely.
+
+`reveal_winner` recomputes rather than trusting the caller. A clear leader cannot
+be overridden, which is the failure the whole product exists to avoid. A tie must
+be resolved from among the joint leaders and carry a note. A cycle nobody voted
+in cannot be revealed at all.
+
+Standings refuse while a cycle is open rather than returning an empty set,
+because empty is indistinguishable from nobody having voted, which is itself
+information.
+
+## Turnout has no named variant, on purpose
+
+`get_cycle_turnout` returns three numbers. There is deliberately no function
+returning who has or has not voted. The reminder job may privately identify
+non-voters in order to message them; no interface may, because that turns a
+recognition programme into an attendance monitor.
+
+## The exposure test earned its keep
+
+Adding `private.cycle_tally` broke the assertion in `001` that pins which private
+functions a client may execute. Postgres grants `EXECUTE` to `PUBLIC` on every
+new function, and the blanket revoke in the `DB-004` migration only covered the
+functions that existed at the time.
+
+So `authenticated` could call the raw tally directly. It returns per-nominee
+counts, which would have handed a member live standings while voting was open
+and broken `FR-RESULT-01`.
+
+Not reachable as an RPC, since `private` is not an exposed schema, so this was a
+second line rather than an open door. But it is exactly the quiet regression the
+test was written for, and it was caught by name within a minute of being
+introduced. A blanket revoke only ever covers the past: every new function in
+`private` needs its own.
+
+## Evidence
+
+`Files=6, Tests=200` passing after a clean replay. A full cycle now runs end to
+end: create an organisation, invite, accept, open, vote, moderate, close, tally
+and reveal, including a tie and a zero-ballot case.
+
+---
+
+# DB-016 and a CI defect of my own making
+
+Date: 25 July 2026
+
+## Duplicate CI runs
+
+Adding the `agent/**` push trigger fixed the gap where eleven commits ran with no
+checks, and introduced a smaller one: every commit on a branch with an open pull
+request then ran the whole suite twice, once per event.
+
+Fixed with a concurrency group keyed on the **commit** rather than the ref, so a
+push and a pull_request event for the same commit collapse into one run.
+`cancel-in-progress` also stops a superseded run finishing after the commit that
+replaced it, which matters more than the wasted minutes: a stale green arriving
+after a newer failure is the last thing anyone sees.
+
+## Generated database types
+
+`src/types/database.ts` is generated from the local schema and committed. It
+covers every table and all fourteen guarded functions.
+
+CI regenerates it and runs `git diff --exit-code`. Without that, types drift
+silently: the schema moves, the checked-in file does not, and TypeScript
+cheerfully keeps confirming a shape the database no longer has. That failure is
+invisible until runtime, which is the worst place to meet it.
+
+The check was verified to fail on a deliberately altered file before being
+trusted. After `supabase db lint` turned out to exit 0 while reporting findings,
+assuming a check works is not something worth repeating.
+
+## Why the generated file is excluded from Biome
+
+Biome wanted to reformat it. Doing so would make the drift comparison fail
+permanently, because CI compares against raw generator output. Generated files
+should not be formatted by hand or by tool, so it is excluded and the committed
+bytes stay identical to what the generator produces.
+
+## An unplanned benefit
+
+The generated `get_admin_nominations` type contains no nominator field and no
+precise timestamp. The confidentiality contract that the SQL tests assert is now
+also expressed in the types the app compiles against, so a screen that tries to
+display a voter will not type-check.
+
+---
+
+# DB-019: a seed that means what it says
+
+Date: 25 July 2026
+
+`supabase/seed.sql` now builds two organisations with six people, mixed roles,
+a participant who can be nominated but cannot vote, one on the roster with no
+account and a live invitation, and four cycles: revealed with a clear winner,
+revealed after a tie, closed awaiting reveal, and open partially voted, with a
+hidden and a withdrawn ballot among them.
+
+Months are relative to the current one. The structure is what is deterministic,
+not the dates, so the fixture cannot rot into four historic cycles and nothing
+open.
+
+## Two safety properties
+
+It **refuses to run off a local stack**. `supabase db reset --linked` resets a
+remote database and then runs this file; the reset is the greater danger, but a
+seed that would happily write invented employees into a real project should not
+depend on the operator noticing. The guard checks the well-known local demo JWT
+secret, which a hosted project does not have. Verified by running the file with
+the setting overridden and watching it refuse.
+
+Every seeded address is on a reserved `.example` domain. RFC 2606 guarantees
+those can never be registered, so a stray invitation cannot reach a real person.
+
+## The mistake worth recording
+
+The first version carried a tie decision note on a cycle that was not tied. Ben
+had two nominations, Eli had one.
+
+Nothing failed. The constraint was satisfied, because the stored winner count
+matched the actual leader, and only the story was wrong. A screen built against
+it would have shown a resolved tie on a cycle with a clear leader, which is
+exactly the case most likely to hide a bug in tie handling.
+
+The arrangement turns out to be constrained: with four eligible voters and no
+self-voting, a genuine two-two tie between Ben and Eli requires Ben's votes to
+come from Ana and Eli, and Eli's from Cara and Ben. Any other pairing produces a
+clear leader. That is now stated in the file, because it is not obvious and the
+next person to edit the ballots will otherwise break it again.
+
+`007_seed_integrity.test.sql` exists as a result. It asserts the seed is
+internally coherent: that a tie note implies two people on the winning count,
+that every revealed winner holds the top of its own tally, that the snapshotted
+name matches the participant it points at, and that no unrevealed cycle carries
+winner data. Fixture data that quietly contradicts itself is worse than none,
+because it teaches the wrong shape and makes a real defect look normal.
+
+## The seed broke the existing suites, correctly
+
+Four test files began failing or aborting once seeded data existed, because they
+asserted absolute counts and used single-row subqueries that had only ever seen
+their own fixtures.
+
+The fix is that each functional suite now deletes the seeded organisations and
+users at the start of its transaction, which the rollback undoes. Tests should
+depend on what they create, not on what happens to be lying around, and this
+makes that explicit rather than accidental. `007` is the exception, since
+asserting against the seed is its whole purpose.
+
+## Evidence
+
+`Files=7, Tests=216` passing, across two consecutive replays from empty.
+
+---
+
+# The first working screens
+
+Date: 26 July 2026
+
+A member can now sign in, see the current cycle, nominate a colleague, read
+their own ballot back, withdraw it and vote again. Verified by doing it in a
+browser against the local stack and then checking the database, not by asserting
+it.
+
+## Verified without an Android device
+
+`FND-010` is still blocked on Android tooling, but Expo builds for web and
+`react-native-web` is already a dependency, so the whole flow runs in the
+browser pane. That is not a substitute for a device build, and layout, gestures
+and notifications still need one. It is enough to prove the data path, the
+guards and the states are real.
+
+## What was checked, in order
+
+Signed out, the guard redirected to sign-in. Signed in as a seeded member and
+the screen showed her organisation, the July cycle, its criteria, and her own
+existing nomination with the reason from the seed. Withdrew it and the nominee
+list appeared with five colleagues and, importantly, without her. Selected
+someone else, added a reason, submitted, and the receipt came back with the new
+choice.
+
+Then, in the database: one ballot for that voter in that cycle, recorded as a
+`recast` rather than a second `cast`. That is the invariant the withdraw design
+exists to protect, and the interface honoured it.
+
+## Two things the client could not do, and why that was right
+
+**The app cannot identify its own roster entry.** `participants.user_id` is
+withheld from the client column grant, which is what stops a member joining a
+name to an auth identity. It also means the nominee list cannot filter the
+signed-in user out. Rather than widening the grant, this added
+`get_my_participant`, which returns the caller's own row only and takes the user
+from `auth.uid()`. The database refuses a self-nomination regardless, so this is
+about not offering a choice that would be rejected.
+
+**The app cannot compute the small-electorate warning.** `can_vote` is withheld
+too, so a member cannot count eligible voters. That is correct, and it places
+`UI-CONF-01` on the administrator screen, where `get_cycle_turnout` already
+returns the eligible count.
+
+## Three failures worth recording
+
+**The generated types were not wired in.** `getSupabaseClient` returned an
+untyped client, so every query compiled against nothing. Typing it with the
+generated `Database` produced twenty errors immediately, all real.
+
+**A concatenated select string silently defeated inference.** Splitting a select
+across two string literals for line length degraded the result type to an error
+type, and every field access on it stopped being checked. It has to be one
+unbroken literal.
+
+**Sign-in returned 500 from a NULL.** The seeded users could not authenticate:
+`Database error querying schema`. GoTrue scans `confirmation_token` and its
+siblings into non-nullable Go strings, so a NULL breaks the query before the
+password is ever compared. They are nullable in the schema, which is why the
+seed left them unset. Empty strings, which GoTrue's own signup path writes, fix
+it.
+
+That last one is worth remembering: the error names whichever column it reached
+first, which sends you looking at confirmation rather than at every nullable
+string column on the table.
+
+## Not done
+
+Sign-up, verification resend and recovery. Timezone-correct dates. Search on the
+nominee list. An explicit confirmation step before submitting. Everything
+administrator-facing.
+
+---
+
+# The administrator screen, and a bug that mattered
+
+Date: 26 July 2026
+
+An owner can now create a cycle, open it, watch turnout, close it, moderate what
+was written, see standings and reveal a winner including a tie. Driven in a
+browser against the seed, not asserted.
+
+## The confidentiality warning finally has a home
+
+`UI-CONF-01` sat open because the member screen cannot compute it: `can_vote` is
+withheld from the roster grant, so a member cannot count eligible voters. That
+was the correct answer all along. The count is available to an administrator
+through `get_cycle_turnout`, so the warning belongs there.
+
+It renders as a full card with `accessibilityRole="alert"`, not help text.
+`D-022` is about not implying a protection the arithmetic cannot support, and a
+footnote implies exactly that. Verified against the seed: Alpha has four eligible
+voters and shows the warning.
+
+## Verified by doing it
+
+Opened the July cycle and turnout read four eligible, two voted, fifty per cent,
+matching the seed exactly. While open, the screen said plainly that no standings
+exist for anybody rather than showing an empty panel that looks like a failure.
+
+Closed it, and standings appeared with shared competition ranks: two people tied
+on one nomination each, both rank 1, next rank 3. The tie path engaged, the
+reveal action stayed disabled until a joint leader was chosen and a note written,
+and afterwards the member screen showed the winner and the reasoning.
+
+The nominations list showed reasons ordered by nominee name with a date and no
+time, and the moderation controls disappeared once the cycle was revealed.
+
+## The bug
+
+The administrator link appeared for a plain member.
+
+`listMemberships` selected from `organisation_members` filtered only by
+`status = 'active'`, on the assumption that RLS would return the caller's own
+row. It does not. The policy deliberately permits reading every membership in
+the caller's organisations, because roles are legitimately visible inside a
+tenant. So the query returned all five colleagues and the screen read the first
+row's role as its own.
+
+Nothing was exposed that the policy did not already allow, and pressing the link
+would have achieved nothing, because every function behind it checks the caller's
+role in the database. It was a display fault, not a breach.
+
+The lesson is the part worth keeping: **what RLS returns and what belongs to the
+caller are not the same set**, and for this table they are deliberately
+different. A query that needs "mine" has to say so. Fixed by filtering on the
+signed-in user id.
+
+It is also a good argument for having built the screen rather than reasoning
+about it. Nothing in the tests would have caught this, because the tests assert
+what the database returns, and the database was right.
+
+## Not done
+
+Roster management, invitations from the interface, scheduled open and close
+times, and an operator-entered moderation reason rather than the current fixed
+wording.
+
+---
+
+# Roster management, and the invitation gap
+
+Date: 26 July 2026
+
+An administrator can now add people, set eligibility and create invitations from
+the interface. Onboarding a new organisation no longer needs SQL, with one real
+exception described below.
+
+## Why the roster needed new functions
+
+The client column grant on `participants` withholds `user_id` and `can_vote`
+from every authenticated caller, administrators included. That is right for the
+list a member sees and it makes managing a roster impossible through the table,
+so management became a shaped admin-only surface.
+
+Showing an administrator `can_vote` deserves stating, since `T2` gives it as a
+reason to withhold the column from members. An administrator sets eligibility.
+They cannot run a programme without knowing who can vote in it, and they already
+receive reasons once a cycle closes. Withholding it from them would protect
+nothing and make the job impossible. What they still never receive is which
+eligible voter wrote which reason, and that boundary is unchanged.
+
+`get_roster` returns `has_account` as a boolean rather than the user id. Whether
+somebody has joined is roster state an administrator needs; the auth identity
+behind it is not, and a boolean cannot be joined to anything.
+
+## The invitation token is deliberately thrown away
+
+`create_invitation` returns the only readable copy of the token, and the screen
+discards it.
+
+A token is a working identity for the invited person. Rendering one in an
+administrator's browser puts it in screenshots, in scroll-back and in anything
+that captures the page, and the invited person still does not have it. The only
+sensible consumer is the trusted mail function of `COM-001`.
+
+So **onboarding is incomplete**: an invitation can be created and nobody can
+accept it, because nothing sends the email. The screen says exactly that rather
+than reporting success and leaving somebody to discover it. A token on screen
+would have made this demo work today and been the wrong thing to build.
+
+## A small honesty in the interface
+
+An unlinked participant shows `Can vote` as on, because the stored flag is true,
+with the toggle disabled and the reason written next to it. The alternative was
+showing it off, which would misrepresent what the database holds. The flag is
+set; the account linkage is what is missing, and saying so is more useful than a
+switch that silently lies in either direction.
+
+## Verified
+
+Read the roster against the seed and checked the toggle states rather than the
+labels: the nominate-only participant's vote switch is genuinely off, and the
+unlinked participant's is disabled. Added somebody through the form and they
+appeared with no account and an invite action. 233 assertions pass, including 17
+new ones covering who may read a roster, who may change eligibility, and that
+the audit records the old and new value rather than merely that something
+changed.
+
+---
+
+# COM-001: the invitation email
+
+Date: 26 July 2026
+
+Onboarding is complete. An owner invites somebody from the roster screen, the
+email arrives with a working link, and that person signs up and joins. Proved end
+to end against the local stack, including that a replayed token is refused.
+
+## Why an Edge Function rather than the RPC
+
+`create_invitation` returns the only readable copy of the token. If the browser
+called it, that token would exist in the client, in devtools and in anything
+that captures a response, and the invited person still would not have it. The
+function creates it, emails it and discards it; the caller learns only when it
+expires.
+
+Authorisation is not reimplemented. The function calls the same RPC with the
+**caller's own JWT**, so the database applies the same owner-or-admin check as
+everywhere else. A bug in that file cannot grant anybody more than they already
+had, which is the reason to do it that way rather than checking a role in
+TypeScript. Confirmed: a plain member gets `permission_denied`, an unauthenticated
+request gets `401`, and only the owner succeeded.
+
+## Three faults, each hiding the next
+
+**`service_role` could not write anything.** Every table gave it `REFERENCES`,
+`TRIGGER` and `TRUNCATE` and no DML, so the first server-side write failed with
+`42501`. The trap is that `BYPASSRLS` and a table privilege are different things:
+the attribute exempts a role from *policies*, and without a `GRANT` there is
+nothing to be exempt from. Every test had passed because nothing server-side had
+tried to write yet.
+
+Fixed with a migration granting exactly two tables and only the verbs used, not
+`grant all on all tables`. Handing the trusted role the ballot table would move
+away from `D-025`, not toward it. `001` now pins that surface too, so the next
+addition is a visible decision.
+
+**My own error handling hid it.** The claim insert treated *any* failure as
+"already sent", so a broken delivery record reported success and no email was
+sent. Only a `23505` means already sent; anything else is a fault and now says
+so.
+
+**My logging hid the next one.** The send failure logged `error.name`, which is
+the word "Error" for almost everything. Logging the message properly needed care,
+because an SMTP error usually quotes the envelope: addresses are stripped before
+anything is written, which is what `COM-001` means by redacted logs.
+
+The real message was then obvious: the mail library refused to authenticate over
+a plaintext connection to the local catcher.
+
+## No mail library
+
+Both transports are now a single `fetch`: Resend's HTTP API in production, the
+local catcher's send endpoint in development. A dependency inside a function
+that handles invitation tokens is a dependency with access to invitation tokens,
+and the one tried first would not talk to a local catcher at all.
+
+Being straight about the trade: the local transport exercises this function, the
+template and the token flow. It does not exercise Resend. Only a real send does,
+which is `INF-016`.
+
+## Verified
+
+Owner invited; the message arrived at the catcher from
+`recognition@jonnyai.co.uk` with the right subject and a 64-character token in
+the link. The invited person signed up, accepted, and became a linked active
+member. Replaying the same token returned `invitation_consumed`. The delivery
+record shows `sent` against an idempotency key derived from the invitation.

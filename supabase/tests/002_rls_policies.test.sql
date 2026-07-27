@@ -19,6 +19,17 @@ create extension if not exists pgtap;
 
 select plan(33);
 
+
+-- The seed in supabase/seed.sql has already run against this database. This
+-- suite asserts absolute counts and creates its own fixtures, so it starts from
+-- an empty slate instead. Both deletes are inside the transaction and are undone
+-- by the rollback at the end, so the seed survives for the next file.
+--
+-- Deleting organisations cascades to members, participants, cycles, ballots,
+-- invitations and settings; deleting users cascades to profiles.
+delete from public.organisations;
+delete from auth.users;
+
 -- ---------------------------------------------------------------------------
 -- Fixtures, created as the migration role before any persona is assumed.
 --

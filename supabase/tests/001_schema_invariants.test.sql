@@ -18,7 +18,18 @@ create extension if not exists pgtap;
 
 -- Must match the assertion count exactly. A plan is not bureaucracy: it is what
 -- catches a test that silently stopped running rather than silently passing.
-select plan(36);
+select plan(37);
+
+
+-- The seed in supabase/seed.sql has already run against this database. This
+-- suite asserts absolute counts and creates its own fixtures, so it starts from
+-- an empty slate instead. Both deletes are inside the transaction and are undone
+-- by the rollback at the end, so the seed survives for the next file.
+--
+-- Deleting organisations cascades to members, participants, cycles, ballots,
+-- invitations and settings; deleting users cascades to profiles.
+delete from public.organisations;
+delete from auth.users;
 
 -- ---------------------------------------------------------------------------
 -- Fail-closed exposure
@@ -119,6 +130,25 @@ select is(
   ),
   'has_org_role,is_org_member',
   'a client can execute only the two policy helpers in private, nothing else'
+);
+
+-- The trusted server role is pinned too. BYPASSRLS exempts it from policies but
+-- grants it nothing, so its reach is exactly this list. Anything added here is a
+-- deliberate widening of what a compromised server function could touch, and in
+-- particular the ballot table must never appear.
+select is(
+  (
+    select string_agg(
+      table_name || ':' || privilege_type, ', '
+      order by table_name, privilege_type)
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and grantee = 'service_role'
+      and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+  ),
+  'audit_events:INSERT, notification_deliveries:INSERT, '
+    || 'notification_deliveries:SELECT, notification_deliveries:UPDATE',
+  'the trusted server role can write only delivery records and audit entries'
 );
 
 -- The single most important line in the schema. If a grant ever appears here,

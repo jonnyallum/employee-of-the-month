@@ -15,6 +15,18 @@ on:
 permissions:
   contents: read
 
+# Adding the agent/** push trigger meant every commit on a branch with an open
+# pull request ran the whole suite twice, once per event. Keying the group on the
+# commit rather than the ref collapses those into one run, because a push and a
+# pull_request event for the same commit land in the same group.
+#
+# cancel-in-progress also stops a superseded run finishing after the commit that
+# replaced it, which is worse than wasteful: a stale green can arrive after a
+# newer failure and be the last thing anyone sees.
+concurrency:
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -96,6 +108,17 @@ jobs:
       # worth holding rather than the one that is merely easy to keep.
       - name: Lint the schema
         run: npx supabase db lint --level warning --fail-on warning
+
+      # Regenerate into the committed path and fail if anything moved. Without
+      # this the types drift silently: the schema changes, the checked-in file
+      # does not, and TypeScript keeps confirming a shape the database no longer
+      # has. That failure is invisible until runtime, which is the worst place
+      # to find it.
+      - name: Check the generated database types are current
+        run: npx supabase gen types typescript --local > src/types/database.ts
+
+      - name: Fail if types drifted from the schema
+        run: git diff --exit-code -- src/types/database.ts
 
       # Runs even when something above failed, so a broken run does not leave a
       # stack behind on a self-hosted or reused runner.
