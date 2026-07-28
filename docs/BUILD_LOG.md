@@ -1508,3 +1508,68 @@ The `supabase` CLI later refused to spawn subprocesses (`uv_spawn`), so the seed
 was restored by running the file through `psql` directly. `007` had already
 failed loudly at that point, correctly, because the database no longer matched
 the seed after the walkthrough.
+
+---
+
+# Privacy: export, purge and deletion
+
+Date: 28 July 2026
+
+Three functions where the promises stop being copy. Each has a rule that is easy
+to get subtly wrong in a way nobody notices until it matters.
+
+## The export is asymmetric, and that is the whole design
+
+What the subject **wrote** comes back with the nominee named, because they chose
+that person and already know. What was written **about** them comes back with no
+author, ever. The return shape has nowhere to put one.
+
+Without that asymmetry a subject access request becomes a way to learn who
+nominated you: a lawful right turned into exactly the disclosure the product
+exists to prevent. The tests assert the author's name, email and user id appear
+nowhere in the output, rather than asserting the happy path.
+
+Reasons about the subject are also withheld while a cycle is open. A live export
+would be a feed of nominations arriving, which is the standings leak by another
+route.
+
+## The purge keeps the row and removes the text
+
+Only revealed cycles past their retention period. Draft, open and closed are
+never touched, because purging work in progress destroys a live programme.
+
+It clears the reason and keeps the ballot row. The count is what makes a past
+result verifiable, and deleting rows would also free the unique slot, letting
+somebody cast into a revealed cycle.
+
+The winner snapshot survives, which works only because `DB-003` made those plain
+columns with no foreign key. A decision taken three days ago for a different
+reason is what makes this safe now.
+
+`dry_run` defaults to true. A purge that deletes by default is one keystroke from
+an accident.
+
+## A grant avoided
+
+The purge is `SECURITY DEFINER` and granted to `service_role`, so the scheduled
+job can run it **without** `service_role` holding delete rights on the ballot
+table. The trusted role's reach stays exactly where `DB-005` left it: two tables,
+four verbs. A compromised server function can call this and nothing else.
+
+## Three failures, all mine, none in the schema
+
+`INSERT is not allowed in a non-volatile function`: the export was marked
+`stable` while recording that an export happened. The audit entry is worth
+keeping, so the function is volatile.
+
+Then two test bugs. One expected a single reason where two genuinely qualified.
+The other read `privacy_requests` directly while acting as `authenticated` and
+got `permission denied` — which is the table behaving correctly, since it has no
+client grant. The test now resets the role to count rows, and the fact that it
+had to is itself the proof.
+
+## Evidence
+
+`Files=9, Tests=261` passing. The purge assertions include running it twice and
+finding nothing the second time, because a scheduled job that re-purges every
+night would rewrite the audit trail indefinitely.
