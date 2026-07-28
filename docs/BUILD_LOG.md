@@ -1699,3 +1699,54 @@ The hosted database now has the schema. Nothing has exercised it: no user, no
 organisation, no ballot. The 284 assertions all ran locally. Running them
 against a hosted project is a different question and is not something to do
 casually, since the suites delete organisations and users as their first act.
+
+---
+
+# Android: the SDK was never missing
+
+Date: 28 July 2026
+
+`FND-010` sat blocked for days on "Android SDK not available". It was available
+the whole time, at `%LOCALAPPDATA%\Android\Sdk`, with `android-36`, build-tools
+36.1.0, platform-tools, two NDKs, the emulator and an AVD already set up.
+
+The only thing wrong was that `ANDROID_HOME` had never been set, so Expo Doctor
+reported the SDK as absent and that was taken at face value. Setting it, at User
+scope so it survives a reboot, moved Doctor from 16/17 to 17/17 and let
+`expo prebuild` generate the native project first time.
+
+Worth naming the mistake: "tool reports X missing" was recorded as "X is
+missing" without checking. The check took one command.
+
+## What blocks the APK now
+
+Gradle compiles Java and Kotlin, then fails in the native step:
+
+```text
+ninja: error: manifest 'build.ninja' still dirty after 100 tries
+```
+
+`LongPathsEnabled` is `0`. Native object files nest under
+`.cxx/tools/debug/arm64-v8a/CMakeFiles/...`, which takes absolute paths beyond
+the 260-character limit, so ninja cannot stat or write them and its manifest
+never settles. It surfaces as a retry loop rather than a path error, which is
+why it is worth writing down.
+
+The fix is an administrator registry change, which is a system setting and not
+something to make on somebody's machine unasked. The alternative is building
+from a short path such as `C:\eotm`.
+
+## Three process mistakes in one build
+
+**A broken `&&` chain hid the first attempt.** `grep` for `targetSdk` found
+nothing, returned 1, and short-circuited the rest of the line. I concluded gradle
+had never started. It had, and was still running twenty minutes later.
+
+**A second build then collided with the first** and reported `BUILD FAILED`
+with a lock timeout, which was reported as the build failing. It was two builds
+fighting.
+
+**A task notification said "exit code 0" when the build had failed.** The pipe
+to `tail` masked gradle's exit code. Looking for the actual APK is what caught
+it, and looking for the artefact rather than trusting the status is the habit
+worth keeping.
