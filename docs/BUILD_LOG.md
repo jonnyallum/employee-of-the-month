@@ -1460,3 +1460,51 @@ Owner invited; the message arrived at the catcher from
 the link. The invited person signed up, accepted, and became a linked active
 member. Replaying the same token returned `invitation_consumed`. The delivery
 record shows `sent` against an idempotency key derived from the invitation.
+
+---
+
+# AUT-004: accepting an invitation
+
+Date: 26 July 2026
+
+The last manual step is gone. An invited person opens the emailed link, creates
+an account and is in, without ever seeing a token or knowing that acceptance was
+a separate operation.
+
+## Two details that shape the screen
+
+**The route guard has to let it through.** Everything else redirects a signed-out
+visitor to sign-in, which for this route would discard the token in the query
+string. `/invite` is exempt and handles its own authentication.
+
+**Acceptance happens on the session, not on a button.** The screen offers
+create-account or sign-in; the moment a session exists, the effect accepts. The
+person is not asked to understand that two things happened, which is the only
+reason the two-step nature is invisible.
+
+## Refusal wording
+
+Every failure has its own sentence, driven by the product code the database
+returns rather than by message text. The wrong-email case deliberately does not
+name the invited address: whoever is holding the link may not be the person it
+was sent to, and naming them would tell an interceptor who works there.
+
+## Verified
+
+A real emailed link, opened in a browser: account created, invitation accepted,
+landed on the member screen with the nominee list showing colleagues and not
+himself, and no administrator link. In the database the roster entry is linked,
+membership is `member` and `active`, and no live invitation remains.
+
+## An aside worth recording
+
+Two earlier attempts to drive this in the browser produced no effect at all, and
+the temptation was to assume the screen was broken. Checking the database showed
+no account had been created and the auth service had received nothing, so the
+click had never reached the handler rather than the flow having failed. The
+distinction mattered: the code was fine and the interaction was not.
+
+The `supabase` CLI later refused to spawn subprocesses (`uv_spawn`), so the seed
+was restored by running the file through `psql` directly. `007` had already
+failed loudly at that point, correctly, because the database no longer matched
+the seed after the walkthrough.

@@ -23,14 +23,18 @@ function Guard() {
   const pathname = usePathname();
 
   const onSignIn = pathname === '/sign-in';
+  // The invitation link arrives with a token in the query string and is opened
+  // by somebody who has no account yet. Redirecting it to sign-in would throw
+  // the token away, so this route handles its own authentication.
+  const onInvite = pathname === '/invite';
 
   useEffect(() => {
     // Wait for the stored session to be read, otherwise a returning user is
     // bounced to sign-in for a frame before being sent back again.
     if (loading) return;
-    if (!session && !onSignIn) router.replace('/sign-in');
+    if (!session && !onSignIn && !onInvite) router.replace('/sign-in');
     if (session && onSignIn) router.replace('/');
-  }, [loading, session, onSignIn, router]);
+  }, [loading, session, onSignIn, onInvite, router]);
 
   if (loading) {
     return (

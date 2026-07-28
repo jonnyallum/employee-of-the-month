@@ -15,6 +15,7 @@ interface SessionValue {
   /** True until the stored session has been read. Guards must wait for this. */
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -59,6 +60,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       async signIn(email, password) {
         const client = getSupabaseClient();
         const { error } = await client.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
+        if (error) throw error;
+      },
+      async signUp(email, password) {
+        const client = getSupabaseClient();
+        const { error } = await client.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
         });
