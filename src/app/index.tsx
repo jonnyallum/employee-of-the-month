@@ -181,6 +181,9 @@ export default function CycleScreen() {
                 Manage
               </Link>
             ) : null}
+            <Link href="/privacy" style={styles.manage}>
+              Privacy
+            </Link>
             <Pressable
               accessibilityLabel="Sign out"
               accessibilityRole="button"

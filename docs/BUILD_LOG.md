@@ -1573,3 +1573,56 @@ had to is itself the proof.
 `Files=9, Tests=261` passing. The purge assertions include running it twice and
 finding nothing the second time, because a scheduled job that re-purges every
 night would rewrite the audit trail indefinitely.
+
+---
+
+# The Privacy centre, and the legal drafts
+
+Date: 28 July 2026
+
+## What a person can now do about their own data
+
+`src/app/privacy.tsx` makes the functions reachable: read the confidentiality
+position, see the organisation's actual retention setting rather than a generic
+sentence, download an export, leave, and request deletion behind a typed
+confirmation. A pending request replaces the form, so a second one cannot be
+queued from the interface either.
+
+The confidentiality wording is the same claim the legal draft makes, and it says
+**confidential, not anonymous**, with the small-team caveat stated on screen. It
+would have been easy to write something warmer and untrue.
+
+## Honest status
+
+The screen type-checks, lints and is wired to tested functions. It has **not**
+been driven in a browser. Repeated attempts to sign in through the automated
+browser did not register the click, while the same credentials authenticate
+fine against the API, so the blocker is the automation rather than the screen.
+`PRV-009` stays in progress until somebody clicks through it by hand.
+
+Saying it is done because the code looks right would be exactly the habit the
+rest of this log argues against.
+
+## The legal drafts
+
+`docs/LEGAL_AND_PRIVACY.md` is written from the engineering side so a solicitor
+reviews facts rather than assumptions. Every claim names the file that makes it
+true.
+
+Three deliberate choices in how it is written:
+
+It **argues against its own conclusion**. The processor analysis lists the
+strongest reasons the operator might be a controller, because a reviewer who
+finds those on their own will trust nothing else in the document.
+
+It states the confidentiality claim **precisely**, separating what the schema
+enforces from what it cannot. Anonymity is not claimed anywhere, because
+`nominator_user_id` exists.
+
+It names the residual risks rather than resolving them with confident wording:
+free-text special-category data, retaining the nominator link after purging the
+reason, and the winner snapshot surviving erasure. The last is the most likely
+point of challenge in the product, and it is flagged as such rather than buried.
+
+Eight questions are put to the reviewer, and a DPIA is recommended rather than
+argued away.

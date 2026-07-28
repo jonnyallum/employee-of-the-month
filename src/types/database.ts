@@ -664,6 +664,11 @@ export type Database = {
         Args: { organisation_name: string; organisation_timezone: string }
         Returns: string
       }
+      delete_organisation: {
+        Args: { confirm_name: string; target_organisation_id: string }
+        Returns: string
+      }
+      export_my_data: { Args: never; Returns: Json }
       get_admin_nominations: {
         Args: { target_cycle_id: string }
         Returns: {
@@ -715,6 +720,17 @@ export type Database = {
           team: string
         }[]
       }
+      get_my_privacy_requests: {
+        Args: never
+        Returns: {
+          completed_at: string
+          due_at: string
+          id: string
+          received_at: string
+          request_type: string
+          state: string
+        }[]
+      }
       get_roster: {
         Args: { target_organisation_id: string }
         Returns: {
@@ -729,6 +745,10 @@ export type Database = {
           team: string
         }[]
       }
+      leave_organisation: {
+        Args: { target_organisation_id: string }
+        Returns: undefined
+      }
       moderate_nomination: {
         Args: {
           action: string
@@ -737,6 +757,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      purge_expired_nominations: {
+        Args: { dry_run?: boolean }
+        Returns: {
+          cycle_id: string
+          nominations_affected: number
+          organisation_id: string
+          period_month: string
+        }[]
+      }
+      request_account_deletion: { Args: never; Returns: string }
       reveal_winner: {
         Args: {
           decision_note?: string
@@ -748,6 +778,10 @@ export type Database = {
       }
       revoke_invitation: {
         Args: { target_invitation_id: string }
+        Returns: undefined
+      }
+      transfer_ownership: {
+        Args: { new_owner_user_id: string; target_organisation_id: string }
         Returns: undefined
       }
       transition_cycle: {
