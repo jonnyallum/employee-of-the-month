@@ -1626,3 +1626,76 @@ point of challenge in the product, and it is flagged as such rather than buried.
 
 Eight questions are put to the reviewer, and a DPIA is recommended rather than
 argued away.
+
+---
+
+# The schema reaches the hosted project, and DB-017 advisors
+
+Date: 28 July 2026
+
+Jonny reauthorised Supabase, which put the development project in reach for the
+first time. All fifteen migrations are now applied to it and the advisors have
+run against the real schema rather than a local container.
+
+## Getting there took three detours, all environmental
+
+`supabase migration list --linked` returned 403
+`LegacyDbConfigLoginRoleStatusError`. The access token is fine: the same token
+lists the project through the management API. It is the CLI's login-role
+provisioning step that this account cannot perform, so every `--linked` command
+is unusable and a direct database URL is the way round it.
+
+`db.<ref>.supabase.co` would not connect. Direct Postgres connections are
+IPv6-only and this machine has no route, which surfaces as a bare
+"Failed to connect" naming nothing. The session pooler on
+`aws-0-eu-west-1.pooler.supabase.com:5432` works. Port matters: 5432 is session
+mode, 6543 is transaction mode and cannot run migrations.
+
+`db push` then failed with `uv_spawn`, the same subprocess error that stopped
+`db reset` earlier. `migration up --db-url` does less shelling out and applied
+all fifteen cleanly.
+
+Worth admitting: the connection probe was written with `2>&1` on a native
+executable, which in PowerShell 5.1 wraps stderr in an `ErrorRecord` and reports
+failure on success. That exact trap is documented in this very file from three
+days ago, and I walked into it anyway.
+
+## What the advisors actually found
+
+Thirty findings, and almost all of them are the design being reported back.
+
+**Seven INFO, "RLS enabled, no policy":** `recognition_nominations`,
+`organisation_invitations`, `audit_events`, `device_push_tokens`,
+`notification_deliveries`, `privacy_requests`, `recognition_ballot_events`.
+
+These are precisely the seven tables the threat model closes deliberately. The
+advisor's usual concern is that RLS without a policy means an unreachable table
+somebody forgot about. Here it is the intent, and it is stronger than the
+advisor can see, because those tables also have **no grant** to any client role.
+A policy would be the weaker position: it would mean PostgREST could reach the
+table and only an expression stood in the way. Accepted, by design.
+
+**Twenty-two WARN, "signed-in users can execute SECURITY DEFINER function":**
+every guarded function.
+
+Also the architecture. Nothing writes through a table grant; everything goes
+through a definer function that validates the caller internally. The warning is
+worth reading rather than dismissing, because it is exactly the list a reviewer
+should audit, and each one is covered by role-based tests that assert what it
+refuses. Accepted, with the tests as the evidence.
+
+**One WARN worth acting on:** leaked password protection disabled. Enabling it
+returned **402 Payment Required** — it is a Pro-plan feature and this project is
+on the free tier.
+
+That is a real finding rather than a configuration slip. It joins the existing
+argument for Pro before closed testing, alongside backups and the free-tier
+pause, and it means the advisor list cannot be brought to zero on the current
+plan. Recorded rather than quietly left failing.
+
+## Not proved by any of this
+
+The hosted database now has the schema. Nothing has exercised it: no user, no
+organisation, no ballot. The 284 assertions all ran locally. Running them
+against a hosted project is a different question and is not something to do
+casually, since the suites delete organisations and users as their first act.
