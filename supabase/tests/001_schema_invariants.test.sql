@@ -128,8 +128,8 @@ select is(
     where n.nspname = 'private'
       and has_function_privilege('authenticated', p.oid, 'execute')
   ),
-  'has_org_role,is_org_member',
-  'a client can execute only the two policy helpers in private, nothing else'
+  'has_org_role,is_org_member,org_is_live',
+  'a client can execute only the three policy helpers in private, nothing else'
 );
 
 -- The trusted server role is pinned too. BYPASSRLS exempts it from policies but
