@@ -776,6 +776,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      process_deletion_requests: {
+        Args: { dry_run?: boolean }
+        Returns: {
+          detail: string
+          outcome: string
+          request_id: string
+          subject_user_id: string
+        }[]
+      }
       purge_expired_nominations: {
         Args: { dry_run?: boolean }
         Returns: {

@@ -391,6 +391,71 @@ for this decision rather than a consequence of it.
 
 Suite 325 → 337 assertions.
 
+### D-037: erasure scrubs the standings, but not the award
+
+**Decision:** When an erasure request is carried out, the person's entry in
+every `tally_snapshot` has its `display_name` replaced with "A former colleague"
+and its `participant_id` nulled, while the count stays. `winner_name` and
+`winner_nominations` are left alone.
+
+**Why:** `D-027` added a tally snapshot naming every participant of every
+revealed month. That was necessary to let the nominee link be purged, but it
+created a second problem nobody had ruled on: an erased person's name would
+survive in the standings of every month they were ever on the roster. `D-023`
+decided a *winner's* name survives erasure and `D-028` gives the controller a
+way to redact even that, so the winner case is covered by a considered position.
+A non-winner who came third has no award to justify keeping their name, and
+nothing covered that case. Found while writing the deletion worker, not by
+review.
+
+The count stays because removing the entry entirely would make a past month stop
+adding up, and an inconsistent historic record invites exactly the "did you
+tamper with this?" question `D-030` was written to be able to answer. The
+wording matches `redact_winner_snapshot` so the two redactions read as the same
+act rather than as two different bugs.
+
+**Implemented:** `process_deletion_requests` in
+`supabase/migrations/20260729120000_deletion_worker.sql`, with four assertions in
+`supabase/tests/012_deletion_worker.test.sql` covering the scrub, the surviving
+counts, the shared wording, and that nobody else is touched.
+
+### PRV-010: the deletion worker
+
+**Decision:** `process_deletion_requests(dry_run)`, service-role only, carries
+out queued erasure requests. Dry run by default, in the same shape as
+`purge_expired_nominations`.
+
+**Why it was not simply "delete the user":** `participants.user_id` is
+`ON DELETE SET NULL`, not cascade. Deleting the auth user leaves the roster row
+standing with the person's display name on it. An erasure that leaves the name
+behind is not an erasure, so participant rows are deleted explicitly and first.
+This was a live gap: the product has been offering erasure, recording the
+request, and never carrying it out.
+
+**Sole ownership is re-checked, not trusted.** `request_account_deletion` blocks
+a sole active owner, but ownership can change in both directions between asking
+and processing. A request that cannot proceed is marked `refused` with a reason
+rather than left in the queue, because a request that silently sits in `received`
+is how a statutory deadline gets missed.
+
+**What survives, deliberately:** the winner name and count (`D-023`), the audit
+event with `actor_user_id` nulled (`D-024`), and the `privacy_requests` row
+itself with `user_id` nulled, which is why that column was made nullable. The
+worker reports when an award record has been retained so the operator can tell
+the person rather than leaving them to discover it.
+
+**Depends on the snapshots.** Deleting a participant cascades their ballots, as
+nominator and as nominee. Revealed cycles are unaffected only because `D-027`
+froze the tally and `D-036` froze turnout. Without those, an erasure would have
+quietly rewritten the results of every month the person voted in.
+
+**Implemented:** the migration above, 24 assertions in
+`supabase/tests/012_deletion_worker.test.sql`. Suite 337 → 361.
+
+**Still open:** nothing schedules it. It is a function, not a cron. Wiring it to
+a scheduled job belongs with the same job that runs `purge_expired_nominations`,
+and neither is scheduled yet.
+
 ### D-028: the customer, not us, decides whether a winner survives erasure
 
 **Decision:** Keep the winner snapshot by default (`D-016`, `D-023`), and give
