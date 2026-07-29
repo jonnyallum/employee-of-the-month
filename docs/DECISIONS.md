@@ -660,6 +660,32 @@ sign-off. `DECISIONS.md` is an unusually good source for the necessity section.
 The customer's own DPIA is theirs and we cannot discharge it. The model is
 commercial advantage as much as compliance: every enterprise DPO will ask.
 
+**Implemented:** `docs/DPIA.md` (ours) and `docs/DPIA_MODEL_FOR_CUSTOMERS.md`
+(model DPIA plus model LIA). Both draft, neither signed off.
+
+Three things this write-up did not anticipate:
+
+- **Our own Article 35 duty does not exist.** We are the processor; the duty is
+  the controller's. The document says so in its second section rather than
+  implying an obligation we do not have, and gives the three real reasons for
+  doing it anyway: the decisions were taken on risk grounds and deserve writing
+  up, every enterprise DPO asks, and Article 28(3)(f) requires us to assist.
+- **A fifth WP248 criterion was conceded.** This decision named three. Criterion
+  9, preventing the exercise of a right, applies squarely: we will not tell a
+  participant who nominated them. Recording it in the DPIA rather than only in
+  the terms is more honest, and costs nothing given the conclusion was already
+  "high risk".
+- **The consultation section is the one most likely to be skipped, so it is
+  written out in full.** Article 35(9) is not satisfied, the reason is that
+  there are no participants yet, and the commitment to consult at first pilot
+  names which two risks to ask about. A blank section reads as an oversight;
+  this was a decision.
+
+The model LIA states plainly that the customer's Article 6(1)(f) basis fails if
+it uses results for employment decisions, which makes `D-029` load-bearing for
+the customer rather than merely protective of us. That is the point `D-029`
+already made, now said to the party it constrains.
+
 ### D-034: production region is London
 
 **Decision:** Create the production Supabase project in `eu-west-2` (London),
