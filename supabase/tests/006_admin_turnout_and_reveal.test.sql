@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(41);
+select plan(45);
 
 
 -- The seed in supabase/seed.sql has already run against this database. This
@@ -343,6 +343,48 @@ select is(
    where id = '6a000000-0000-0000-0000-0000000000c1'),
   'revealed',
   'and the status moved in the same write'
+);
+
+-- D-027. The whole tally, not just the winner, has to be recorded at reveal.
+-- After the purge severs the nominee links it cannot be recomputed, so if it is
+-- not written here it is lost.
+
+select is(
+  (select jsonb_array_length(tally_snapshot) from public.recognition_cycles
+   where id = '6a000000-0000-0000-0000-0000000000c1'),
+  4,
+  'reveal snapshots all four participants, not only the winner (D-027)'
+);
+
+select is(
+  (select (e ->> 'nominations')::int
+   from public.recognition_cycles c,
+        lateral jsonb_array_elements(c.tally_snapshot) e
+   where c.id = '6a000000-0000-0000-0000-0000000000c1'
+     and e ->> 'display_name' = 'Ben'),
+  2,
+  'with the counts as they stood'
+);
+
+select is(
+  (select (e ->> 'nominations')::int
+   from public.recognition_cycles c,
+        lateral jsonb_array_elements(c.tally_snapshot) e
+   where c.id = '6a000000-0000-0000-0000-0000000000c1'
+     and e ->> 'display_name' = 'Ana'),
+  0,
+  'including the people nobody nominated, so the standings still read honestly'
+);
+
+-- The hidden-then-restored ballot above proves moderation feeds the tally. The
+-- snapshot must reflect the final state, not an intermediate one.
+select is(
+  (select sum((e ->> 'nominations')::int)::int
+   from public.recognition_cycles c,
+        lateral jsonb_array_elements(c.tally_snapshot) e
+   where c.id = '6a000000-0000-0000-0000-0000000000c1'),
+  3,
+  'and the totals match the three ballots that actually counted'
 );
 
 -- ---------------------------------------------------------------------------

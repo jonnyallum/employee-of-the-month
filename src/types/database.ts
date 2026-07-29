@@ -439,6 +439,7 @@ export type Database = {
           revealed_at: string | null
           revealed_by: string | null
           status: string
+          tally_snapshot: Json | null
           tie_decision_note: string | null
           updated_at: string
           version: number
@@ -458,6 +459,7 @@ export type Database = {
           revealed_at?: string | null
           revealed_by?: string | null
           status?: string
+          tally_snapshot?: Json | null
           tie_decision_note?: string | null
           updated_at?: string
           version?: number
@@ -477,6 +479,7 @@ export type Database = {
           revealed_at?: string | null
           revealed_by?: string | null
           status?: string
+          tally_snapshot?: Json | null
           tie_decision_note?: string | null
           updated_at?: string
           version?: number
@@ -505,8 +508,9 @@ export type Database = {
           moderation_reason: string | null
           nominator_participant_id: string
           nominator_user_id: string
-          nominee_participant_id: string
+          nominee_participant_id: string | null
           organisation_id: string
+          purged_at: string | null
           reason: string | null
           status: string
           updated_at: string
@@ -521,8 +525,9 @@ export type Database = {
           moderation_reason?: string | null
           nominator_participant_id: string
           nominator_user_id: string
-          nominee_participant_id: string
+          nominee_participant_id?: string | null
           organisation_id: string
+          purged_at?: string | null
           reason?: string | null
           status?: string
           updated_at?: string
@@ -537,8 +542,9 @@ export type Database = {
           moderation_reason?: string | null
           nominator_participant_id?: string
           nominator_user_id?: string
-          nominee_participant_id?: string
+          nominee_participant_id?: string | null
           organisation_id?: string
+          purged_at?: string | null
           reason?: string | null
           status?: string
           updated_at?: string

@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(27);
+select plan(33);
 
 delete from public.organisations;
 delete from auth.users;
@@ -50,6 +50,19 @@ values
   ('9a000000-0000-0000-0000-0000000000c2', '9a000000-0000-0000-0000-00000000000a',
    '2026-05-01', 'revealed', 4, '9a000000-0000-0000-0000-0000000000a2',
    'The Subject', 1, now() - interval '1 day');
+
+-- These cycles are inserted directly rather than through reveal_winner, so they
+-- carry the snapshot that reveal would have written (D-027). Without it the
+-- purge below would be testing against a cycle whose standings were already
+-- absent, and would pass whether or not the snapshot works.
+update public.recognition_cycles
+set tally_snapshot = jsonb_build_array(
+      jsonb_build_object(
+        'participant_id', '9a000000-0000-0000-0000-0000000000a2'::uuid,
+        'display_name', 'The Subject',
+        'nominations', 1))
+where id in ('9a000000-0000-0000-0000-0000000000c1',
+             '9a000000-0000-0000-0000-0000000000c2');
 
 -- And an open one, which must never be purged.
 insert into public.recognition_cycles
@@ -283,7 +296,75 @@ select is(
   (select count(*)::int from public.recognition_nominations
    where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
   1,
-  'the ballot row remains, so the count that decided the result is verifiable'
+  'the ballot row remains, so turnout and the one-vote guard still hold'
+);
+
+-- ---------------------------------------------------------------------------
+-- PRV-004a / D-027: the purge severs the link, not just the words
+-- ---------------------------------------------------------------------------
+--
+-- What used to survive a purge was a permanent map of who chose whom with the
+-- words removed and the meaning intact. That is the artefact D-024 says must
+-- not exist, so the link goes too.
+
+select is(
+  (select nominee_participant_id from public.recognition_nominations
+   where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
+  null,
+  'the purge severs the nominator-to-nominee link, not only the reason (D-027)'
+);
+
+select isnt(
+  (select purged_at from public.recognition_nominations
+   where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
+  null,
+  'and stamps when it happened'
+);
+
+-- The one-vote guard is unique (organisation_id, cycle_id, nominator_user_id).
+-- If the purge cleared that too, a purged cycle could be voted in twice.
+select is(
+  (select nominator_user_id from public.recognition_nominations
+   where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
+  '90000000-0000-0000-0000-000000000003'::uuid,
+  'the nominator survives, because the one-vote guard depends on it'
+);
+
+-- The reason this was hard: standings are computed from the links, so severing
+-- them would rewrite the history of every past month to zero unless reveal had
+-- already recorded the counts.
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"90000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+select is(
+  (select nominations from public.get_closed_standings(
+     '9a000000-0000-0000-0000-0000000000c1')
+   where display_name = 'The Subject'),
+  1,
+  'and the standings survive it, because reveal snapshotted them (D-027)'
+);
+
+reset role;
+
+-- A row cannot be half purged. Either the link is there and the stamp is not,
+-- or the reverse.
+select throws_ok(
+  $$update public.recognition_nominations
+    set purged_at = now()
+    where cycle_id = '9a000000-0000-0000-0000-0000000000c2'$$,
+  '23514',
+  null,
+  'a purge stamp without severing the link is rejected'
+);
+
+select throws_ok(
+  $$update public.recognition_nominations
+    set nominee_participant_id = null
+    where cycle_id = '9a000000-0000-0000-0000-0000000000c2'$$,
+  '23514',
+  null,
+  'and severing the link without stamping it is rejected'
 );
 
 -- Running it again must find nothing, or a scheduled job would rewrite history

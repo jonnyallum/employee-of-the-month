@@ -202,10 +202,17 @@ it is impossible today.
 Give the residual row an end date. "Retained indefinitely" is a hard phrase to
 defend in any context, and the row should die with the cycle.
 
-**Product decision:** `D-027`. Schema and function change. Deferred to a card
-rather than written blind — it alters a `NOT NULL` constraint and two tested
-functions, and the pgTAP suite cannot run in this environment. It should not be
-merged without `supabase db reset && supabase test db` passing.
+**Product decision:** `D-027`. Schema and function change. **Built and passing**
+in `supabase/migrations/20260728221500_sever_nominator_link_at_purge.sql`. The
+condition set here was met before merging: `supabase db reset && supabase test
+db` runs green at 325 assertions, and the purge was exercised end to end — links
+severed, reasons cleared, nominators kept, standings unchanged afterwards.
+
+One clause of this ruling is **not** yet satisfied: "give the residual row an end
+date". The row cascades with its cycle, but nothing deletes cycles, so the end
+date is never reached. That needs turnout snapshotted before the rows can go, and
+a retention period the controller chooses. Carried as `D-036` and flagged for
+counsel as the open half of this ruling.
 
 ---
 

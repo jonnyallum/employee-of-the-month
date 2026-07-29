@@ -304,10 +304,64 @@ the words removed but the meaning intact, which is the artefact `D-024` already
 decided must not exist. The one-vote guard is
 `unique (organisation_id, cycle_id, nominator_user_id)` and is unaffected.
 
-**Implemented:** No. Deliberately deferred to a card. It alters a `NOT NULL`
-constraint and two functions with existing contract tests, and it was written up
-rather than written blind because the pgTAP suite could not be run when the
-decision was taken.
+**Implemented:** Yes, in
+`supabase/migrations/20260728221500_sever_nominator_link_at_purge.sql`, once the
+pgTAP suite could actually be run. `reveal_winner` now writes a `tally_snapshot`
+in the same transaction that sets `status = 'revealed'`;
+`purge_expired_nominations` clears `reason` and `nominee_participant_id` together
+and stamps `purged_at`; the coherence constraint is as specified verbatim.
+`get_closed_standings` reads the snapshot when one exists and computes live
+otherwise, so a cycle closed but not yet revealed is unaffected.
+
+Two things the write-up did not anticipate, both found by building it:
+
+- **Standings had to be snapshotted for cycles revealed before this migration**,
+  not only for new ones. Their links still existed at deploy time but would have
+  been destroyed by the first purge, silently blanking the standings of every
+  month revealed to date. The migration backfills them. Verified by nulling the
+  snapshots on seeded revealed cycles and re-running the backfill statement.
+- **`get_admin_nominations` had to exclude purged rows.** Its inner join to
+  `participants` would have dropped them anyway; saying so explicitly stops that
+  being an accident of the query plan.
+
+Verified end to end against a real purge: three links severed, three reasons
+cleared, three nominators kept, and `get_closed_standings` returning the
+identical ranking afterwards. Suite at 325 assertions, `db lint` clean.
+
+**Not implemented, and separated deliberately:** the ruling's closing clause,
+"give the residual row an end date... the row should die with the cycle". The
+row already cascades on cycle, organisation and nominator deletion, so it dies
+with the cycle structurally — but nothing in the product ever deletes a cycle,
+so that end date is never reached in practice. Closing it properly means
+choosing how long a revealed cycle itself lives, which is a controller decision
+about retention rather than a bug, and it needs turnout snapshotted onto the
+cycle first because `get_cycle_turnout` still counts the residual rows. Carried
+as `D-036`.
+
+### D-036: how long a revealed cycle itself lives
+
+**Status:** open, needs Jonny and then the customer. Not a coding decision yet.
+
+**The gap:** `D-027` leaves a residual ballot row carrying `nominator_user_id`
+and `purged_at` — no nominee, no reason. It is the record that a named person
+voted in a named month, retained indefinitely, because no cycle is ever deleted.
+"Retained indefinitely" is the phrase the ruling warns is hard to defend.
+
+**Why it is not just a delete:** the residual row is still doing two jobs. It
+backs the one-vote guard, which is moot once a cycle is revealed and cannot be
+reopened, and it backs `get_cycle_turnout`, which is not moot — turnout is
+reported for historic cycles. Deleting the rows without first snapshotting
+turnout onto `recognition_cycles` would rewrite historic turnout to zero, which
+is the same mistake the tally snapshot exists to prevent.
+
+**The shape of the fix:** snapshot turnout at reveal alongside the tally, then a
+second-stage purge that deletes residual rows for cycles older than a
+customer-set cycle-retention period, defaulting to something conservative. Both
+stages want to be in the same scheduled job.
+
+**Blocked on:** the deletion worker, which is unwritten, and a decision on the
+default retention period. Raise with the solicitor alongside ruling 2 — it is
+the half of ruling 2 that is not yet answered.
 
 ### D-028: the customer, not us, decides whether a winner survives erasure
 
