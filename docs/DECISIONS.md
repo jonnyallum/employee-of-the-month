@@ -463,6 +463,62 @@ quietly rewritten the results of every month the person voted in.
 a scheduled job belongs with the same job that runs `purge_expired_nominations`,
 and neither is scheduled yet.
 
+### D-038: the exposure surface is pinned per column, not per table
+
+**Found, not decided.** A leak introduced by `D-027` and `D-036` and caught only
+when the privacy notice could not read a different new column.
+
+**What happened:** `recognition_cycles` carried a **table-level** SELECT grant
+to `authenticated`. A table-level grant covers columns added afterwards. So
+`tally_snapshot` (`D-027`) and `turnout_eligible` / `turnout_ballots` (`D-036`)
+became readable by every member the moment they were created — no migration
+said so, and no test failed.
+
+**What was exposed:** `tally_snapshot` is the per-nominee standings of every
+revealed cycle, which `D-004` hides while a cycle is open and which
+`get_closed_standings` gates to owners and admins afterwards. A member could
+read the column and skip the function entirely. `turnout_*` are the figures
+behind `get_cycle_turnout`, which has an explicit assertion that a plain member
+cannot see turnout — the columns contradicted the function. Neither exposes who
+voted for whom.
+
+**Why the guard missed it:** `001_schema_invariants.test.sql` pinned the
+exposed **tables** by name, and both columns were on a table that was already
+and legitimately exposed. The threat model's stated approach is to open a column
+at a time; the test only ever enforced that at table granularity, so the two
+were not the same rule.
+
+**How it was actually noticed,** which is worth recording because it was luck
+rather than method: `D-036` also added `residual_retention_months` to
+`recognition_settings`, and the privacy notice could not read it. Chasing *that*
+grant surfaced the full column list, and the three open columns on
+`recognition_cycles` were sitting in it. The fail-closed default worked exactly
+as designed for the settings table and did nothing for the cycles table,
+because one had column grants and the other had a table grant.
+
+**A column-level REVOKE does not fix this.** Postgres accepts
+`revoke select (col) on t from role` and reports `REVOKE`, but a table-level
+privilege still implies access to every column, so the grant survives and the
+leak stays open. Verified before writing the migration. The only thing that
+works is revoking the table privilege and re-granting the columns explicitly.
+
+**Also closed while the grant was being rewritten:** `revealed_by`, which names
+the administrator who revealed a result. It predates this leak and was
+previously readable. No client code selects it and it is the only column on the
+table that identifies a person, so leaving it open merely because it happened to
+be open would have been the same mistake in a slower form.
+
+**Implemented:**
+`supabase/migrations/20260729150000_close_cycle_snapshot_columns.sql`, plus two
+new assertions in `001_schema_invariants.test.sql`: the full readable surface
+pinned as 44 `table.column` pairs, and a named check on the four withheld
+columns. The per-column assertion is deliberately verbose — the verbosity is the
+mechanism, because a new column now has to be justified in a diff.
+
+Behaviourally verified as a member: `permission denied` on both
+`tally_snapshot` and `turnout_ballots`, with ordinary cycle reads unaffected.
+Suite 366 → 368.
+
 ### D-028: the customer, not us, decides whether a winner survives erasure
 
 **Decision:** Keep the winner snapshot by default (`D-016`, `D-023`), and give

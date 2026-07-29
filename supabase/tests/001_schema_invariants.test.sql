@@ -18,7 +18,7 @@ create extension if not exists pgtap;
 
 -- Must match the assertion count exactly. A plan is not bureaucracy: it is what
 -- catches a test that silently stopped running rather than silently passing.
-select plan(37);
+select plan(39);
 
 
 -- The seed in supabase/seed.sql has already run against this database. This
@@ -78,6 +78,95 @@ select is(
   'organisation_members,organisations,participants,profiles,'
     || 'recognition_cycles,recognition_settings',
   'exactly six tables are reachable by a client, and no others'
+);
+
+-- Pinning the tables was not enough, and this assertion exists because of a
+-- real leak rather than a hypothetical one.
+--
+-- `recognition_cycles` carried a TABLE-level grant, and a table-level grant
+-- covers columns added afterwards. D-027 and D-036 each added a column to it,
+-- and each became readable by every member on creation with no migration
+-- saying so and no test failing. `tally_snapshot` is the full standings that
+-- `get_closed_standings` gates to administrators; `turnout_*` are the figures
+-- behind `get_cycle_turnout`, which has its own test asserting a plain member
+-- cannot see them.
+--
+-- So the surface is now pinned column by column. It is verbose on purpose: the
+-- verbosity is the mechanism. Adding a column to an exposed table fails here
+-- and has to be justified in a diff, which is the whole premise of the threat
+-- model and was the one thing the table-level assertion could not deliver.
+select is(
+  (
+    select string_agg(table_name || '.' || column_name, E'\n'
+                      order by table_name, column_name)
+    from information_schema.role_column_grants
+    where table_schema = 'public' and grantee = 'authenticated'
+      and privilege_type = 'SELECT'
+  ),
+  array_to_string(array[
+    'organisation_members.joined_at',
+    'organisation_members.organisation_id',
+    'organisation_members.role',
+    'organisation_members.status',
+    'organisation_members.updated_at',
+    'organisation_members.user_id',
+    'organisations.created_at',
+    'organisations.created_by',
+    'organisations.deleted_at',
+    'organisations.id',
+    'organisations.name',
+    'organisations.timezone',
+    'organisations.updated_at',
+    'participants.active',
+    'participants.avatar_path',
+    'participants.can_receive',
+    'participants.display_name',
+    'participants.id',
+    'participants.organisation_id',
+    'participants.team',
+    'profiles.created_at',
+    'profiles.display_name',
+    'profiles.updated_at',
+    'profiles.user_id',
+    'recognition_cycles.closes_at',
+    'recognition_cycles.created_at',
+    'recognition_cycles.criteria',
+    'recognition_cycles.id',
+    'recognition_cycles.leaderboard_mode',
+    'recognition_cycles.opens_at',
+    'recognition_cycles.organisation_id',
+    'recognition_cycles.period_month',
+    'recognition_cycles.revealed_at',
+    'recognition_cycles.status',
+    'recognition_cycles.tie_decision_note',
+    'recognition_cycles.updated_at',
+    'recognition_cycles.version',
+    'recognition_cycles.winner_name',
+    'recognition_cycles.winner_nominations',
+    'recognition_cycles.winner_participant_id',
+    'recognition_settings.criteria_template',
+    'recognition_settings.organisation_id',
+    'recognition_settings.residual_retention_months',
+    'recognition_settings.retention_months'
+  ], E'\n'),
+  'every readable column is pinned by name, so a new one cannot arrive quietly'
+);
+
+-- The three that caused this, called out individually. The assertion above
+-- would catch them, but it fails as one large diff, and a future reader
+-- deleting a line to make it pass should have to delete one that says why.
+select is(
+  (
+    select count(*)::int
+    from information_schema.role_column_grants
+    where table_schema = 'public'
+      and table_name = 'recognition_cycles'
+      and grantee = 'authenticated'
+      and column_name in ('tally_snapshot', 'turnout_eligible',
+                          'turnout_ballots', 'revealed_by')
+  ),
+  0,
+  'a client cannot read the standings, the turnout, or who revealed a result'
 );
 
 -- The two withheld columns are what stop a member joining a roster name to an

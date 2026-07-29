@@ -58,6 +58,8 @@ export async function leaveOrganisation(organisationId: string): Promise<void> {
 
 export interface RetentionPolicy {
   retentionMonths: number | null;
+  /** D-036. The residual ballot record has its own, longer period. */
+  residualRetentionMonths: number | null;
 }
 
 export async function loadRetention(
@@ -66,13 +68,16 @@ export async function loadRetention(
   const client = getSupabaseClient();
   const { data, error } = await client
     .from('recognition_settings')
-    .select('retention_months')
+    .select('retention_months, residual_retention_months')
     .eq('organisation_id', organisationId)
     .maybeSingle();
 
   if (error) throw error;
   if (!data) return null;
-  return { retentionMonths: data.retention_months };
+  return {
+    retentionMonths: data.retention_months,
+    residualRetentionMonths: data.residual_retention_months,
+  };
 }
 
 const MESSAGES: Record<string, string> = {

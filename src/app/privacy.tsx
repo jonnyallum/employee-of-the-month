@@ -31,9 +31,23 @@ function retentionSentence(months: number | null): string {
   return `Your organisation deletes the reasons people wrote ${months} months after a result is announced.`;
 }
 
+/**
+ * D-036 gave the residual ballot record an end date, so the notice can no
+ * longer say it is kept "for as long as the result exists". That was true when
+ * it was written and stopped being true when the second retention dial was
+ * added; a notice that lags the schema is exactly what D-031 was about.
+ */
+function residualSentence(months: number | null): string {
+  if (months === null) {
+    return 'We also keep a record that you voted, without anything you wrote or who you chose. Your organisation has chosen to keep that indefinitely.';
+  }
+  return `We also keep a record that you voted, without anything you wrote or who you chose, for a further ${months} months. After that it is deleted too.`;
+}
+
 export default function PrivacyScreen() {
   const { session, signOut } = useSession();
   const [membership, setMembership] = useState<Membership | null>(null);
+  const [residual, setResidual] = useState<number | null>(null);
   const [retention, setRetention] = useState<number | null | undefined>(
     undefined,
   );
@@ -56,6 +70,7 @@ export default function PrivacyScreen() {
       if (mine) {
         const policy = await loadRetention(mine.organisationId);
         setRetention(policy?.retentionMonths ?? null);
+        setResidual(policy?.residualRetentionMonths ?? null);
       }
       setRequests(await listMyPrivacyRequests());
     } catch (caught) {
@@ -178,13 +193,13 @@ export default function PrivacyScreen() {
               The record that somebody won a month is kept, so past results stay
               accurate.
             </Text>
-            {/* The old wording implied everything about a vote goes at the
-                retention period. It does not: the reason text is cleared and
-                the ballot stays. Saying so is the point of D-003. */}
-            <Text style={styles.body}>
-              We also keep a record that you voted, without anything you wrote,
-              for as long as the result exists.
-            </Text>
+            {/* The wording here has been corrected twice, and both times the
+                schema moved first. It once implied everything about a vote went
+                at the retention period, which was wrong because the ballot
+                stayed (D-003). It then said the ballot stayed "for as long as
+                the result exists", which stopped being true when D-036 gave
+                that record its own end date. */}
+            <Text style={styles.body}>{residualSentence(residual)}</Text>
           </View>
         ) : null}
 
