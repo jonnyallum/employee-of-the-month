@@ -295,3 +295,20 @@ values
    'Someone who made this month better.', 2,
    date_trunc('month', now()),
    date_trunc('month', now()) + interval '1 month' - interval '1 day');
+
+-- ---------------------------------------------------------------------------
+-- D-032 tags
+-- ---------------------------------------------------------------------------
+--
+-- The inserts above predate tags and take the `unspecified` default. Spread the
+-- demo ballots across the vocabulary so the administrator's view shows what a
+-- real month looks like rather than five identical rows. Keyed on the row id so
+-- the same seed always produces the same spread.
+
+update public.recognition_nominations n
+set tag = (array['helped_colleague',
+                 'helped_customer',
+                 'improved_how_we_work',
+                 'shared_knowledge',
+                 'steady_under_pressure'])[1 + (abs(hashtext(n.id::text)) % 5)]
+where n.tag = 'unspecified';

@@ -562,15 +562,66 @@ reasoning still to write.
 
 ### D-032: structured tags instead of a free-text essay box
 
-**Decision:** Accepted in principle, not scheduled. Offer tags such as "went
-above and beyond", "helped a colleague", "fixed something nobody noticed", with
-a short optional free text.
+**Decision:** Built. A required tag and a short optional note replace the essay
+box. Jonny took the product call on 29 July 2026.
 
 **Why:** Not a legal requirement, and the highest-value change available for the
 Article 9 problem. People write essays in essay boxes. Every mitigation in
 `D-030` is a remedy after the fact; this is the only one that reduces how often
 the fact occurs. Left unscheduled because it changes the feel of the product and
 that is a decision to take deliberately rather than on legal advice alone.
+
+**The vocabulary,** narrowed from the sketch in this decision:
+
+    helped_colleague        Helped a colleague
+    helped_customer         Looked after a customer
+    improved_how_we_work    Improved how we work
+    shared_knowledge        Shared what they know
+    steady_under_pressure   Steady when it counted
+
+The original sketch included "went above and beyond". It was dropped. Every tag
+must describe something a person *did*; "went above and beyond" describes how
+somebody *was*, and a vocabulary that invites comment on who a person is makes
+the Article 9 problem worse rather than better. That is the test each entry has
+to pass, and it is the reason there is no "overcame adversity" or "great
+attitude" in the list.
+
+**What is now required, and what is not.** The tag is mandatory and the note is
+genuinely optional. That inverts the previous behaviour: the client used to
+refuse a nomination with no reason ("Add a short reason for your nomination")
+while the database accepted one, so the essay box was in practice compulsory.
+The note also drops from 500 characters to 250 — a paragraph is where the
+disclosures live, and a sentence is enough to say what somebody did.
+
+**`unspecified` is a sixth value that is not a tag.** Ballots written before
+this change have no tag, and there is no honest mapping from free text to one.
+Back-filling them as `helped_colleague` would be inventing data about real
+people, so they take `unspecified`, which the check constraint accepts and
+`cast_nomination` refuses. It can only ever mean "written before D-032". The
+column carries it as a default so a fixture or a future admin tool that says
+nothing gets the honest answer rather than an error; that cannot weaken the
+requirement, because clients have no INSERT grant on the table at all and
+`cast_nomination` is the only path by which a ballot is ever created.
+
+**The tag survives the retention purge, the reason does not.** Once `D-027` has
+severed the nominee link, "somebody was thanked for looking after a customer"
+identifies nobody, and keeping it lets an organisation see what its people
+actually value over years without retaining anything about a named person.
+
+**Implemented:** `supabase/migrations/20260729130000_structured_nomination_tags.sql`
+(`cast_nomination`, `get_admin_nominations`, `get_my_nomination`,
+`export_my_data`), `NOMINATION_TAGS` and `nominationTagLabel` in
+`src/domain/recognition/engine.ts`, chip picker in `src/app/index.tsx`. Suite
+361 → 366 assertions plus two new unit tests. The tag is included in the subject
+access export, and the `reasons_written_about_me` filter was widened from
+`reason is not null`, which would otherwise have silently omitted a tag-only
+nomination from a person's own export.
+
+**Note for the administrator's view:** `get_admin_nominations` gained a column,
+which changed the shape pinned by the first assertion in
+`006_admin_turnout_and_reveal.test.sql`. That assertion exists so a change like
+this is deliberate rather than accidental, and updating it in the same commit is
+the intended workflow rather than a nuisance.
 
 ### D-033: two DPIAs, and the threat model is an annex
 

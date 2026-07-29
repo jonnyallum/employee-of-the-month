@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   type ConfidentialityLevel,
+  NOMINATION_TAGS,
   periodLabel,
   REASON_MAX_LENGTH,
   voterConfidentialityMessage,
@@ -61,6 +62,7 @@ export default function CycleScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -103,6 +105,7 @@ export default function CycleScreen() {
         confidentiality: confidentialityLevel,
       });
       setSelected(mine?.nomineeParticipantId ?? null);
+      setTag(mine?.tag ?? null);
       setReason(mine?.reason ?? '');
     } catch (caught) {
       setError(describeError(caught));
@@ -128,13 +131,14 @@ export default function CycleScreen() {
   );
 
   async function submit() {
-    if (!data.cycle || !selected || submitting) return;
+    if (!data.cycle || !selected || !tag || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       await castNomination({
         cycleId: data.cycle.id,
         nomineeParticipantId: selected,
+        tag,
         reason,
         // Stable for this cycle and voter, so a retry after a dropped
         // connection returns the original ballot rather than being refused as
@@ -371,7 +375,45 @@ export default function CycleScreen() {
                   })}
                 </View>
 
-                <Text style={styles.sectionLabel}>WHY? (OPTIONAL)</Text>
+                {/* D-032. The tag comes first and is required. The note that
+                    follows is optional, which is the inversion of what this
+                    screen used to ask for: an empty essay box invites an essay,
+                    and essays are where health and disciplinary details end up.
+                    A tag answers "what did they do" well enough that most
+                    people will not feel the need to elaborate. */}
+                <Text style={styles.sectionLabel}>WHAT DID THEY DO?</Text>
+                <View style={styles.tagRow}>
+                  {NOMINATION_TAGS.map((option) => {
+                    const isChosen = tag === option.value;
+                    return (
+                      <Pressable
+                        accessibilityLabel={option.label}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: isChosen }}
+                        key={option.value}
+                        onPress={() => setTag(option.value)}
+                        style={({ pressed }) => [
+                          styles.tagChip,
+                          isChosen && styles.tagChipChosen,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.tagChipText,
+                            isChosen && styles.tagChipTextChosen,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.sectionLabel}>
+                  ANYTHING TO ADD? (OPTIONAL)
+                </Text>
                 {/* Above the field, not below it. This warning used to live in
                     the character counter, which people read after they have
                     finished typing. A warning that arrives too late to change
@@ -381,7 +423,7 @@ export default function CycleScreen() {
                   details about your colleague.
                 </Text>
                 <TextInput
-                  accessibilityLabel="Why are you nominating them? Optional. Please do not include health, disciplinary or other sensitive details."
+                  accessibilityLabel="Anything to add? Optional. Please do not include health, disciplinary or other sensitive details about your colleague."
                   maxLength={REASON_MAX_LENGTH}
                   multiline
                   onChangeText={setReason}
@@ -399,13 +441,13 @@ export default function CycleScreen() {
                   accessibilityRole="button"
                   accessibilityState={{
                     busy: submitting,
-                    disabled: !selected || submitting,
+                    disabled: !selected || !tag || submitting,
                   }}
-                  disabled={!selected || submitting}
+                  disabled={!selected || !tag || submitting}
                   onPress={() => void submit()}
                   style={({ pressed }) => [
                     styles.primaryButton,
-                    (!selected || submitting) && styles.disabled,
+                    (!selected || !tag || submitting) && styles.disabled,
                     pressed && styles.pressed,
                   ]}
                 >
@@ -540,6 +582,31 @@ const styles = StyleSheet.create({
   nomineeTeam: { color: colours.inkMuted, fontSize: 13, marginTop: 2 },
   nomineeTeamSelected: { color: '#A9B9B3' },
   tick: { color: colours.lime, fontSize: 20, fontWeight: '800' },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  tagChip: {
+    borderColor: colours.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  tagChipChosen: {
+    backgroundColor: colours.lime,
+    borderColor: colours.lime,
+  },
+  tagChipText: {
+    color: colours.inkMuted,
+    fontSize: 14,
+  },
+  tagChipTextChosen: {
+    color: colours.ink,
+    fontWeight: '600',
+  },
   reasonInput: {
     backgroundColor: colours.surface,
     borderColor: colours.line,

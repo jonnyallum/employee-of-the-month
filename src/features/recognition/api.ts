@@ -41,6 +41,8 @@ export interface MyNomination {
   id: string;
   nomineeParticipantId: string;
   nomineeDisplayName: string;
+  /** D-032. Carried back so a recast pre-fills instead of silently resetting. */
+  tag: string;
   reason: string | null;
   status: string;
 }
@@ -178,6 +180,7 @@ export async function loadMyNomination(
     id: row.id,
     nomineeParticipantId: row.nominee_participant_id,
     nomineeDisplayName: row.nominee_display_name,
+    tag: row.tag,
     reason: row.reason,
     status: row.status,
   };
@@ -186,19 +189,22 @@ export async function loadMyNomination(
 export async function castNomination(input: {
   cycleId: string;
   nomineeParticipantId: string;
+  /** D-032. Required. The database refuses anything outside the vocabulary. */
+  tag: string;
   reason: string;
   idempotencyKey: string;
 }): Promise<void> {
   const client = getSupabaseClient();
   const trimmed = input.reason.trim();
 
-  // The reason is optional, and under exactOptionalPropertyTypes an absent
+  // The note is optional, and under exactOptionalPropertyTypes an absent
   // argument is not the same as one set to undefined. Omitting the key lets the
   // function's own default apply rather than sending a null the RPC would have
-  // to interpret.
+  // to interpret. The tag is never omitted.
   const { error } = await client.rpc('cast_nomination', {
     target_cycle_id: input.cycleId,
     nominee_participant_id: input.nomineeParticipantId,
+    nomination_tag: input.tag,
     idempotency_key: input.idempotencyKey,
     ...(trimmed === '' ? {} : { reason: trimmed }),
   });

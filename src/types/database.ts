@@ -519,6 +519,7 @@ export type Database = {
           purged_at: string | null
           reason: string | null
           status: string
+          tag: string
           updated_at: string
         }
         Insert: {
@@ -536,6 +537,7 @@ export type Database = {
           purged_at?: string | null
           reason?: string | null
           status?: string
+          tag?: string
           updated_at?: string
         }
         Update: {
@@ -553,6 +555,7 @@ export type Database = {
           purged_at?: string | null
           reason?: string | null
           status?: string
+          tag?: string
           updated_at?: string
         }
         Relationships: [
@@ -647,6 +650,7 @@ export type Database = {
       cast_nomination: {
         Args: {
           idempotency_key?: string
+          nomination_tag: string
           nominee_participant_id: string
           reason?: string
           target_cycle_id: string
@@ -695,6 +699,7 @@ export type Database = {
           nominee_participant_id: string
           reason: string
           status: string
+          tag: string
         }[]
       }
       get_closed_standings: {
@@ -727,6 +732,7 @@ export type Database = {
           nominee_participant_id: string
           reason: string
           status: string
+          tag: string
         }[]
       }
       get_my_participant: {

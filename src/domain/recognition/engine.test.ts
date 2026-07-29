@@ -12,9 +12,11 @@ import {
   eligibleVoterIds,
   leaders,
   type NamedParticipant,
+  NOMINATION_TAGS,
   type NominationLike,
   nominatableFor,
   nominationRefusal,
+  nominationTagLabel,
   normaliseReason,
   type ParticipantLike,
   periodKey,
@@ -114,6 +116,7 @@ function attempt(
     nominations: [] as NominationLike[],
     voterUserId: 'user-a',
     nomineeParticipantId: 'b',
+    tag: 'helped_customer',
     reason: 'Carried a difficult customer handover.',
     ...overrides,
   };
@@ -186,13 +189,51 @@ test('ballot guard requires an open cycle, identity and useful reason', () => {
   );
   assert.equal(
     nominationRefusal(attempt({ reason: '   ' })),
-    'Add a short reason for your nomination.',
+    null,
+    'the note is optional now that the tag carries the meaning (D-032)',
   );
   assert.match(
     nominationRefusal(attempt({ reason: 'x'.repeat(REASON_MAX_LENGTH + 1) })) ??
       '',
-    /500 characters/,
+    /250 characters/,
   );
+});
+
+test('a nomination must say what the person did (D-032)', () => {
+  assert.equal(
+    nominationRefusal(attempt({ tag: '' })),
+    'Choose what this person did.',
+  );
+  assert.equal(
+    nominationRefusal(attempt({ tag: 'went_above_and_beyond' })),
+    'Choose what this person did.',
+    'a tag outside the vocabulary is refused rather than sent to the database',
+  );
+  // The legacy value marks ballots written before tags existed. Offering it as
+  // a choice would make "not recorded" a thing somebody could deliberately say.
+  assert.equal(
+    nominationRefusal(attempt({ tag: 'unspecified' })),
+    'Choose what this person did.',
+  );
+  const offered: string[] = NOMINATION_TAGS.map((option) => option.value);
+  assert.ok(
+    !offered.includes('unspecified'),
+    'unspecified is never offered to a voter',
+  );
+});
+
+test('the tag vocabulary describes behaviour, never a person', () => {
+  for (const option of NOMINATION_TAGS) {
+    assert.equal(
+      nominationRefusal(attempt({ tag: option.value })),
+      null,
+      option.value + ' is accepted',
+    );
+    assert.equal(nominationTagLabel(option.value), option.label);
+  }
+  // A pre-D-032 ballot has to render as something. A raw slug or a blank cell
+  // both read as a bug.
+  assert.equal(nominationTagLabel('unspecified'), 'Not recorded');
 });
 
 test('reason normalisation is deterministic', () => {

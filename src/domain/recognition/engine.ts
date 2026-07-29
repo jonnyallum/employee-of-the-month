@@ -12,8 +12,46 @@ export type CycleStatus = (typeof CYCLE_STATUSES)[number];
 export const LEADERBOARD_MODES = ['hidden', 'top_three', 'full'] as const;
 export type LeaderboardMode = (typeof LEADERBOARD_MODES)[number];
 
-export const REASON_MAX_LENGTH = 500;
+/**
+ * D-032. 250, not 500. A paragraph is where the disclosures live; a sentence is
+ * enough to say what somebody actually did.
+ */
+export const REASON_MAX_LENGTH = 250;
 export const SHORTLIST_SIZE = 3;
+
+/**
+ * D-032. The vocabulary is behaviour only, deliberately. Every entry describes
+ * something a person did, and none invites a comment on who they are, what they
+ * have been through, or how they have been — a tag reading "overcame adversity"
+ * would make the Article 9 problem worse rather than better.
+ *
+ * The slugs are the values the database constraint accepts. `unspecified` is
+ * absent on purpose: it exists in the schema so ballots written before tags
+ * existed can say so honestly, and `cast_nomination` refuses it, so it must not
+ * be offerable here either.
+ */
+export const NOMINATION_TAGS = [
+  { value: 'helped_colleague', label: 'Helped a colleague' },
+  { value: 'helped_customer', label: 'Looked after a customer' },
+  { value: 'improved_how_we_work', label: 'Improved how we work' },
+  { value: 'shared_knowledge', label: 'Shared what they know' },
+  { value: 'steady_under_pressure', label: 'Steady when it counted' },
+] as const;
+
+export type NominationTag = (typeof NOMINATION_TAGS)[number]['value'];
+
+export function isNominationTag(value: unknown): value is NominationTag {
+  return NOMINATION_TAGS.some((tag) => tag.value === value);
+}
+
+export function nominationTagLabel(value: string): string {
+  return (
+    NOMINATION_TAGS.find((tag) => tag.value === value)?.label ??
+    // Pre-D-032 ballots. Saying so is better than showing a raw slug or an
+    // empty cell, both of which read as a bug.
+    'Not recorded'
+  );
+}
 
 export interface CycleLike {
   id: string;
@@ -184,6 +222,9 @@ export interface NominationAttempt {
   nominations: readonly NominationLike[];
   voterUserId: string | null;
   nomineeParticipantId: string;
+  /** D-032. Required. One of NOMINATION_TAGS, never `unspecified`. */
+  tag: string;
+  /** D-032. Optional now that the tag carries the meaning. */
   reason: string;
 }
 
@@ -216,10 +257,15 @@ export function nominationRefusal(attempt: NominationAttempt): string | null {
     return 'You have already nominated someone this month.';
   }
 
+  // D-032 inverts what is required. The tag now carries the meaning, so it is
+  // mandatory, and the note is genuinely optional rather than nominally so.
+  if (!isNominationTag(attempt.tag)) {
+    return 'Choose what this person did.';
+  }
+
   const reason = normaliseReason(attempt.reason);
-  if (!reason) return 'Add a short reason for your nomination.';
-  if (reason.length > REASON_MAX_LENGTH) {
-    return `Keep the reason to ${REASON_MAX_LENGTH} characters or fewer.`;
+  if (reason && reason.length > REASON_MAX_LENGTH) {
+    return `Keep the note to ${REASON_MAX_LENGTH} characters or fewer.`;
   }
 
   return null;

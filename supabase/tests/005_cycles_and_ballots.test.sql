@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(37);
+select plan(41);
 
 
 -- The seed in supabase/seed.sql has already run against this database. This
@@ -177,7 +177,7 @@ set local request.jwt.claims =
   '{"sub":"50000000-0000-0000-0000-000000000009","role":"authenticated"}';
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a2')$$,
+      '5a000000-0000-0000-0000-0000000000a2', 'helped_colleague')$$,
   '42501',
   null,
   'a member of another organisation cannot vote in this cycle'
@@ -187,7 +187,7 @@ set local request.jwt.claims =
   '{"sub":"50000000-0000-0000-0000-000000000004","role":"authenticated"}';
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a2')$$,
+      '5a000000-0000-0000-0000-0000000000a2', 'helped_colleague')$$,
   '42501',
   null,
   'somebody who can receive but not vote is refused'
@@ -198,7 +198,7 @@ set local request.jwt.claims =
 
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a3')$$,
+      '5a000000-0000-0000-0000-0000000000a3', 'helped_colleague')$$,
   '22023',
   null,
   'self-nomination is refused by the function as well as the constraint'
@@ -206,7 +206,7 @@ select throws_ok(
 
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5b000000-0000-0000-0000-0000000000b1')$$,
+      '5b000000-0000-0000-0000-0000000000b1', 'helped_colleague')$$,
   '42501',
   null,
   'a nominee in another organisation is indistinguishable from one that does not exist'
@@ -214,7 +214,7 @@ select throws_ok(
 
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a5')$$,
+      '5a000000-0000-0000-0000-0000000000a5', 'helped_colleague')$$,
   '22023',
   null,
   'an inactive nominee is refused'
@@ -222,19 +222,55 @@ select throws_ok(
 
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a2', repeat('x', 501))$$,
+      '5a000000-0000-0000-0000-0000000000a2', 'helped_colleague', repeat('x', 251))$$,
   '22023',
   null,
-  'a reason over 500 characters is refused'
+  'a note over 250 characters is refused'
+);
+
+-- ---------------------------------------------------------------------------
+-- D-032: the tag is required, and unspecified is not a tag
+-- ---------------------------------------------------------------------------
+
+select throws_ok(
+  $$select public.cast_nomination((select id from cyc),
+      '5a000000-0000-0000-0000-0000000000a2', null)$$,
+  '22023',
+  null,
+  'a nomination with no tag is refused (D-032)'
+);
+
+select throws_ok(
+  $$select public.cast_nomination((select id from cyc),
+      '5a000000-0000-0000-0000-0000000000a2', 'went_above_and_beyond')$$,
+  '22023',
+  null,
+  'and so is a tag outside the vocabulary'
+);
+
+-- The legacy value exists so that ballots written before tags can say so
+-- honestly. It must never be selectable as a real answer.
+select throws_ok(
+  $$select public.cast_nomination((select id from cyc),
+      '5a000000-0000-0000-0000-0000000000a2', 'unspecified')$$,
+  '22023',
+  null,
+  'unspecified is refused, so it can only ever mean "written before D-032"'
 );
 
 select lives_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a2', '  Covered   a hard   handover. ')$$,
+      '5a000000-0000-0000-0000-0000000000a2', 'helped_colleague', '  Covered   a hard   handover. ')$$,
   'an eligible voter can nominate an eligible colleague'
 );
 
 reset role;
+
+select is(
+  (select tag from public.recognition_nominations),
+  'helped_colleague',
+  'the tag is stored'
+);
 
 select is(
   (select reason from public.recognition_nominations),
@@ -262,7 +298,7 @@ set local request.jwt.claims =
 
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a1')$$,
+      '5a000000-0000-0000-0000-0000000000a1', 'helped_colleague')$$,
   '23505',
   null,
   'a second nomination in the same cycle is refused'
@@ -277,11 +313,11 @@ set local request.jwt.claims =
 
 create temporary table first_try as
 select public.cast_nomination((select id from cyc),
-  '5a000000-0000-0000-0000-0000000000a3', 'Steady all month.', 'retry-key-1') as id;
+  '5a000000-0000-0000-0000-0000000000a3', 'helped_colleague', 'Steady all month.', 'retry-key-1') as id;
 
 create temporary table second_try as
 select public.cast_nomination((select id from cyc),
-  '5a000000-0000-0000-0000-0000000000a3', 'Steady all month.', 'retry-key-1') as id;
+  '5a000000-0000-0000-0000-0000000000a3', 'helped_colleague', 'Steady all month.', 'retry-key-1') as id;
 
 select is(
   (select id from second_try),
@@ -357,7 +393,7 @@ select throws_ok(
 
 select lives_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a1', 'Changed my mind.')$$,
+      '5a000000-0000-0000-0000-0000000000a1', 'helped_colleague', 'Changed my mind.')$$,
   'a voter can vote again after withdrawing'
 );
 
@@ -397,7 +433,7 @@ set local request.jwt.claims =
   '{"sub":"50000000-0000-0000-0000-000000000001","role":"authenticated"}';
 select throws_ok(
   $$select public.cast_nomination((select id from cyc),
-      '5a000000-0000-0000-0000-0000000000a2')$$,
+      '5a000000-0000-0000-0000-0000000000a2', 'helped_colleague')$$,
   '22023',
   null,
   'nominating after close is refused'

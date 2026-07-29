@@ -78,7 +78,8 @@ select is(
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'get_admin_nominations'),
   'TABLE(id uuid, nominee_participant_id uuid, nominee_display_name text, '
-    || 'reason text, status text, moderated_at timestamp with time zone, '
+    || 'tag text, reason text, status text, '
+    || 'moderated_at timestamp with time zone, '
     || 'moderation_reason text, created_date date)',
   'the admin nomination shape is exactly this, and gains a column only on purpose'
 );

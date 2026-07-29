@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(41);
+select plan(42);
 
 delete from public.organisations;
 delete from auth.users;
@@ -92,6 +92,13 @@ values
    '90000000-0000-0000-0000-000000000002', '9a000000-0000-0000-0000-0000000000a2',
    '9a000000-0000-0000-0000-0000000000a1', 'The subject wrote this about the owner.');
 
+-- These fixtures insert directly and so take the `unspecified` default. Give
+-- the subject's own ballot a real tag, so the export assertion below is testing
+-- that the tag travels rather than that the default does.
+update public.recognition_nominations
+set tag = 'shared_knowledge'
+where nominator_user_id = '90000000-0000-0000-0000-000000000002';
+
 -- ---------------------------------------------------------------------------
 -- PRV-005: the export, and what it must never contain
 -- ---------------------------------------------------------------------------
@@ -148,6 +155,14 @@ select is(
   public.export_my_data() -> 'nominations_i_made' -> 0 ->> 'nominee',
   'The Owner',
   'what the subject wrote is returned with the nominee named'
+);
+
+-- D-032. The tag is data we hold about the subject, so a subject access request
+-- that omitted it would be a gap the tag feature created.
+select is(
+  public.export_my_data() -> 'nominations_i_made' -> 0 ->> 'tag',
+  'shared_knowledge',
+  'and with the tag they chose (D-032)'
 );
 
 select is(
