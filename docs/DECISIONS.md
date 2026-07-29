@@ -287,7 +287,14 @@ knowingly from what is offered. A schedule converts "the supplier imposed it"
 into "the controller chose it". Article 28(10) makes getting this wrong
 self-executing, so it is worth a clause rather than an argument.
 
-**Implemented:** Nothing in code. DPA drafting, before the first customer.
+**Implemented:** Drafted, in `docs/DPA_AND_CONTRACT_TERMS.md` Part A. The
+pre-set characteristics schedule is A8 and carries five items rather than the
+three this decision named: ballot confidentiality, nomination retention,
+residual retention (added by `D-036`), the hidden leaderboard, and the
+small-team warnings. Each is stated as a choice the customer confirms it has
+assessed, and A8 closes by making the customer acknowledge that selecting
+indefinite retention is its own Article 5(1)(e) call. Not executed, not offered
+to anybody, and it needs a solicitor.
 
 ### D-027: severing the nominator-to-nominee link at purge
 
@@ -502,7 +509,14 @@ It must catch non-participation or we have banned punishing the loser and
 permitted punishing the person who declined to vote, which is the more likely
 abuse and the one the product is otherwise good at preventing.
 
-**Implemented:** Nothing in code. Contract drafting, before the first customer.
+**Implemented:** Drafted, in `docs/DPA_AND_CONTRACT_TERMS.md` Part B. Covenant
+(B2), the reasoning given to the customer rather than kept to ourselves (B3),
+indemnity (B4), suspension (B5), and a requirement that the customer tells
+participants (B6) — a promise the affected people never hear does not help the
+balancing test. The non-participation limb is drafted as an equal prohibition
+rather than an afterthought. Not executed, and it needs a solicitor; Part C
+question 8 asks whether this should be a licence condition rather than a
+covenant.
 
 ### D-030: moderation must be able to delete, and must work after reveal
 
