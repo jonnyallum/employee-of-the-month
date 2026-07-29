@@ -359,9 +359,37 @@ second-stage purge that deletes residual rows for cycles older than a
 customer-set cycle-retention period, defaulting to something conservative. Both
 stages want to be in the same scheduled job.
 
-**Blocked on:** the deletion worker, which is unwritten, and a decision on the
-default retention period. Raise with the solicitor alongside ruling 2 — it is
-the half of ruling 2 that is not yet answered.
+**Decision taken:** a new `residual_retention_months` on `recognition_settings`,
+same shape as `retention_months` and defaulting to **24 months**, measured from
+when the row was severed rather than from reveal. Null means indefinite, which
+is consistent with `D-012` already allowing a controller to choose indefinite
+retention of the far more sensitive reason text. The objection the review raised
+was that we retained forever *by design with no option*, not that a controller
+may never choose it. Existing rows are set to 24 explicitly by the migration
+rather than left on the behaviour this decision exists to end.
+
+**Deviation from the ruling, deliberate.** The ruling said the row "should die
+with the cycle". Taken literally that means deleting revealed cycles, which
+destroys the winner name, the standings and the award history that `D-023` says
+survives even an erasure request. The substance of the ruling is that retention
+must not be indefinite. The cycle lives; the ballot rows do not. Flagged for
+counsel as a departure from the letter of the advice.
+
+**Implemented:** `supabase/migrations/20260729110000_residual_retention_and_turnout_snapshot.sql`.
+`purge_expired_nominations` now returns a `stage` column and runs two stages:
+`severed` at `retention_months`, `deleted` at `residual_retention_months` after
+severing. Stage two refuses to run on a cycle with no turnout snapshot, because
+the failure that matters is destroying a figure, not leaving a row.
+
+**Found while building, and worth recording separately:** `get_cycle_turnout`
+counted eligible voters from the *live* roster, so hiring or deactivating
+somebody today silently rewrote the turnout percentage of every past month — a
+number an administrator may already have reported to their board. Reveal now
+freezes `turnout_eligible` and `turnout_ballots`, backfilled for existing
+revealed cycles. That is a correctness fix that happened to be a precondition
+for this decision rather than a consequence of it.
+
+Suite 325 → 337 assertions.
 
 ### D-028: the customer, not us, decides whether a winner survives erasure
 

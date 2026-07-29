@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(45);
+select plan(49);
 
 
 -- The seed in supabase/seed.sql has already run against this database. This
@@ -386,6 +386,60 @@ select is(
   3,
   'and the totals match the three ballots that actually counted'
 );
+
+-- D-036. Turnout is snapshotted for the same reason as the tally: the ballot
+-- rows it counts are deleted once past their residual retention period.
+
+select is(
+  (select turnout_eligible from public.recognition_cycles
+   where id = '6a000000-0000-0000-0000-0000000000c1'),
+  4,
+  'reveal freezes the eligible voter count (D-036)'
+);
+
+select is(
+  (select turnout_ballots from public.recognition_cycles
+   where id = '6a000000-0000-0000-0000-0000000000c1'),
+  3,
+  'and the ballots that counted'
+);
+
+-- This also fixes a bug that predates D-036: turnout was computed from the live
+-- roster, so hiring somebody today rewrote the turnout percentage an
+-- administrator may already have reported for a month that is closed.
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"60000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+select is(
+  (select turnout_percent from public.get_cycle_turnout(
+     '6a000000-0000-0000-0000-0000000000c1')),
+  75,
+  'turnout reads 3 of 4'
+);
+
+reset role;
+
+insert into auth.users (id, email, email_confirmed_at) values
+  ('60000000-0000-0000-0000-000000000005', 'eve@alpha.test', now());
+
+insert into public.participants
+  (organisation_id, user_id, display_name, active, can_vote, can_receive)
+values ('6a000000-0000-0000-0000-00000000000a',
+        '60000000-0000-0000-0000-000000000005', 'Eve', true, true, true);
+
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"60000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+select is(
+  (select turnout_percent from public.get_cycle_turnout(
+     '6a000000-0000-0000-0000-0000000000c1')),
+  75,
+  'and a later hire does not retrospectively rewrite it (D-036)'
+);
+
+reset role;
 
 -- ---------------------------------------------------------------------------
 -- Revealed is terminal

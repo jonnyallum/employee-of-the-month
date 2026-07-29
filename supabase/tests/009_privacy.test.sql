@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(33);
+select plan(41);
 
 delete from public.organisations;
 delete from auth.users;
@@ -374,6 +374,93 @@ select is(
   0,
   'running the purge again finds nothing, so the job is idempotent'
 );
+
+-- ---------------------------------------------------------------------------
+-- PRV-004b / D-036: the residual row has an end date
+-- ---------------------------------------------------------------------------
+--
+-- After D-027 the surviving row says "this named person voted in this named
+-- month". Low sensitivity, but kept forever it is still indefinite retention,
+-- which is what the review said cannot be defended.
+
+select is(
+  (select residual_retention_months from public.recognition_settings
+   where organisation_id = '9a000000-0000-0000-0000-00000000000a'),
+  24,
+  'residual retention defaults to 24 months rather than to forever (D-036)'
+);
+
+-- Freshly severed rows are nowhere near the end date, so stage two must not
+-- touch them. This is the assertion that catches an off-by-a-clock deletion.
+select is(
+  (select count(*)::int from public.purge_expired_nominations(false)
+   where stage = 'deleted'),
+  0,
+  'a row severed moments ago is not deleted'
+);
+
+-- Age the severed row past the residual period.
+update public.recognition_nominations
+set purged_at = now() - interval '30 months'
+where cycle_id = '9a000000-0000-0000-0000-0000000000c1';
+
+-- Stage two refuses without a turnout snapshot, because deleting the rows would
+-- take historic turnout to zero. Failing safe here means leaving data alone.
+update public.recognition_cycles set turnout_ballots = null
+where id = '9a000000-0000-0000-0000-0000000000c1';
+
+select is(
+  (select count(*)::int from public.purge_expired_nominations(false)
+   where stage = 'deleted'),
+  0,
+  'stage two refuses to delete a cycle with no turnout snapshot (D-036)'
+);
+
+select is(
+  (select count(*)::int from public.recognition_nominations
+   where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
+  1,
+  'and leaves the row alone rather than destroying the figure'
+);
+
+update public.recognition_cycles set turnout_ballots = 1, turnout_eligible = 3
+where id = '9a000000-0000-0000-0000-0000000000c1';
+
+select is(
+  (select count(*)::int from public.purge_expired_nominations(false)
+   where stage = 'deleted'),
+  1,
+  'with turnout recorded, the residual row is deleted'
+);
+
+select is(
+  (select count(*)::int from public.recognition_nominations
+   where cycle_id = '9a000000-0000-0000-0000-0000000000c1'),
+  0,
+  'and the record that a named person voted that month is gone'
+);
+
+-- The whole point of snapshotting turnout first.
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"90000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+select is(
+  (select turnout_percent from public.get_cycle_turnout(
+     '9a000000-0000-0000-0000-0000000000c1')),
+  33,
+  'turnout survives the deletion, because it was snapshotted (D-036)'
+);
+
+select is(
+  (select nominations from public.get_closed_standings(
+     '9a000000-0000-0000-0000-0000000000c1')
+   where display_name = 'The Subject'),
+  1,
+  'and so do the standings'
+);
+
+reset role;
 
 select * from finish();
 

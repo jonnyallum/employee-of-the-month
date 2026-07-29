@@ -441,6 +441,8 @@ export type Database = {
           status: string
           tally_snapshot: Json | null
           tie_decision_note: string | null
+          turnout_ballots: number | null
+          turnout_eligible: number | null
           updated_at: string
           version: number
           winner_name: string | null
@@ -461,6 +463,8 @@ export type Database = {
           status?: string
           tally_snapshot?: Json | null
           tie_decision_note?: string | null
+          turnout_ballots?: number | null
+          turnout_eligible?: number | null
           updated_at?: string
           version?: number
           winner_name?: string | null
@@ -481,6 +485,8 @@ export type Database = {
           status?: string
           tally_snapshot?: Json | null
           tie_decision_note?: string | null
+          turnout_ballots?: number | null
+          turnout_eligible?: number | null
           updated_at?: string
           version?: number
           winner_name?: string | null
@@ -588,6 +594,7 @@ export type Database = {
           last_purge_at: string | null
           organisation_id: string
           push_reminders_default: boolean
+          residual_retention_months: number | null
           retention_months: number | null
           updated_at: string
         }
@@ -598,6 +605,7 @@ export type Database = {
           last_purge_at?: string | null
           organisation_id: string
           push_reminders_default?: boolean
+          residual_retention_months?: number | null
           retention_months?: number | null
           updated_at?: string
         }
@@ -608,6 +616,7 @@ export type Database = {
           last_purge_at?: string | null
           organisation_id?: string
           push_reminders_default?: boolean
+          residual_retention_months?: number | null
           retention_months?: number | null
           updated_at?: string
         }
@@ -774,6 +783,7 @@ export type Database = {
           nominations_affected: number
           organisation_id: string
           period_month: string
+          stage: string
         }[]
       }
       redact_winner_snapshot: {
