@@ -9,7 +9,9 @@
       "!supabase/.temp",
       "!.expo-scaffold",
       "!src/types/database.ts",
-      "!expo-env.d.ts"
+      "!expo-env.d.ts",
+      "!android",
+      "!ios"
     ]
   },
   "formatter": {

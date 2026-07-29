@@ -260,6 +260,239 @@ Rejected. It undermines independent voting.
 Rejected until the repeat-cycle value is proven. It adds payment, tax, fraud,
 fulfilment and support scope.
 
+## Accepted 28 July 2026, from the legal determinations
+
+`docs/LEGAL_ANSWERS.md` v0.2 answered the eight questions in
+`docs/LEGAL_QUESTIONS_SIMPLE.md` and closed the four that were left open in
+`docs/LEGAL_AND_PRIVACY.md` section 10. These are the product consequences.
+
+**None of these has been reviewed by a solicitor.** They are held as build
+decisions on the reasoning recorded in `LEGAL_ANSWERS.md`, which cites its
+authorities so each can be checked rather than rebuilt. `D-028` and the Article
+14 reasoning in `D-031` are the two flagged as genuinely contestable and are the
+two to put in front of counsel first.
+
+### D-026: we remain a processor, and say so in a schedule
+
+**Decision:** Keep the controller/processor split in `LEGAL_AND_PRIVACY.md`
+section 1. Add a "pre-set characteristics" schedule to the DPA listing ballot
+confidentiality, the retention menu and the hidden leaderboard, with the
+customer confirming it has assessed them as controller.
+
+**Why:** Under EDPB Guidelines 07/2020 the duration of storage and the
+categories of recipient are *essential* means reserved to the controller, and
+two of our three constraints touch them. The answer is not that they are
+technical details — they are not — but that the customer selects them
+knowingly from what is offered. A schedule converts "the supplier imposed it"
+into "the controller chose it". Article 28(10) makes getting this wrong
+self-executing, so it is worth a clause rather than an argument.
+
+**Implemented:** Nothing in code. DPA drafting, before the first customer.
+
+### D-027: severing the nominator-to-nominee link at purge
+
+**Decision:** At reveal, write a per-nominee tally snapshot to the cycle. At
+purge, clear the reason text *and* the nominee link, stamping `purged_at`, with
+`check ((purged_at is null) = (nominee_participant_id is not null))`.
+
+**Why:** After a cycle is revealed and the text is gone, nothing needs to know
+that a particular person chose a particular colleague. The winner snapshot, the
+turnout and the tallies all stand without it, so Article 5(1)(c) is not
+satisfied by keeping it. The stronger reason is ours rather than the law's: what
+survives the purge today is a permanent map of who thought what about whom with
+the words removed but the meaning intact, which is the artefact `D-024` already
+decided must not exist. The one-vote guard is
+`unique (organisation_id, cycle_id, nominator_user_id)` and is unaffected.
+
+**Implemented:** No. Deliberately deferred to a card. It alters a `NOT NULL`
+constraint and two functions with existing contract tests, and it was written up
+rather than written blind because the pgTAP suite could not be run when the
+decision was taken.
+
+### D-028: the customer, not us, decides whether a winner survives erasure
+
+**Decision:** Keep the winner snapshot by default (`D-016`, `D-023`), and give
+administrators `redact_winner_snapshot` with three outcomes — initials, "A
+former colleague", or no name. The nomination count and the fact of a revealed
+result survive every mode. The roster link goes in every mode.
+
+**Why:** Erasure here runs through an Article 21(1) objection, where the
+controller must *demonstrate* compelling legitimate grounds that override the
+individual. That balance belongs to the employer, and a processor that cannot
+carry out the controller's decision either way is the actual exposure. Three
+modes rather than two because the middle one usually satisfies the person while
+leaving the record coherent. The link must go with the name or the name could be
+recovered by a join, which would make the whole thing cosmetic.
+
+**Contestable.** An employee could plausibly persuade the ICO that a former
+employer has no compelling ground to keep her name at all. What makes the
+position survivable is that it was disclosed before she took part and that the
+employer can undo it, not the strength of the argument.
+
+**Implemented:** `redact_winner_snapshot` in
+`supabase/migrations/20260728203000_legal_redaction_and_voter_notice.sql`, with
+tests in `supabase/tests/011_legal_redaction.test.sql`. Deletion flow copy in
+`src/app/privacy.tsx` now routes the person to their employer before they
+delete.
+
+### D-029: contractual prohibition on performance use
+
+**Decision:** The customer terms carry a permitted-use covenant, an indemnity
+and a suspension right, not a disclaimer. It catches non-participation as well
+as results.
+
+**Why:** Two independent reasons. It is load-bearing for the customer's Article
+6(1)(f) basis, because reasonable expectations is the limb that decides this
+product and nobody nominating a colleague expects it in a redundancy matrix.
+And a peer popularity vote correlates with visibility rather than performance,
+which makes it a section 19 Equality Act indirect discrimination claim waiting
+to happen — part-time staff, people returning from family leave, disabled
+employees, remote and night-shift workers all systematically lose it.
+*Williams v Compair Maxam* has required objective, verifiable redundancy
+criteria since 1982.
+
+It must catch non-participation or we have banned punishing the loser and
+permitted punishing the person who declined to vote, which is the more likely
+abuse and the one the product is otherwise good at preventing.
+
+**Implemented:** Nothing in code. Contract drafting, before the first customer.
+
+### D-030: moderation must be able to delete, and must work after reveal
+
+**Decision:** `moderate_nomination` gains a `redact` action that clears the
+reason text permanently and is permitted after a cycle is revealed. Hide and
+restore keep their existing pre-reveal-only rule.
+
+**Why:** Hiding is a display control. Article 9(1) prohibits special category
+processing outright and none of the 9(2) conditions is available when a
+colleague volunteers health information about a third party — not consent, not
+employment obligations, not manifestly-made-public. So the content is unlawful
+from the moment it is written and cannot be made lawful afterwards; it has to
+leave storage. The old function also refused all moderation once a cycle was
+revealed, which meant the one category of content that must always be removable
+became permanent on a schedule. Redaction is safe to allow post-reveal because
+it removes words and never a ballot, so no count moves and no published result
+changes.
+
+The moderation reason must not become the new home for the text just removed.
+The interface warns on that field.
+
+**Implemented:** the migration above, with eight assertions in
+`011_legal_redaction.test.sql` covering storage, the audit trail and the
+post-reveal case.
+
+### D-031: the privacy notice says what is true
+
+**Decision:** Three corrections in `src/app/privacy.tsx`, and the sensitive-data
+warning moves above the reason field in `src/app/index.tsx`.
+
+- "Who can see your nomination: **nobody**" becomes "nobody in your
+  organisation", with our own technical access and the court-order case stated.
+- "We will **never** tell you who wrote it" becomes "will not normally".
+- Retention wording now says the ballot record outlives the text.
+
+Plus the Article 13 items that were missing: the lawful basis named, the right
+to object given its own card as Article 21(4) requires, participation stated as
+voluntary, and the ICO named as the complaint route.
+
+**Why:** The first sentence was contradicted by `LEGAL_AND_PRIVACY.md`
+section 3 and by the threat model — a disprovable claim whose disproof we wrote
+ourselves. The second was too absolute: withholding the author rests on the
+third party exemption in Schedule 2 Part 3 paragraph 16 of the DPA 2018, which
+is a balancing exemption that can be displaced by consent or reasonableness, so
+"never" forecloses a judgment the statute requires. The warning moved because
+in the character counter it arrives after somebody has finished typing.
+
+**Contestable, in one part.** Withholding the source from the *nominee* engages
+Article 14(2)(f), a proactive transparency duty, and paragraph 16 is drafted as
+a restriction on Article 15 access. Reading it across is a sound argument, not
+an automatic one; Article 14(5)(b) supports it as a second limb. This is the
+point where confidentiality to the nominator and transparency to the nominee
+actually conflict, and it needs counsel.
+
+**Implemented:** copy changes shipped. DSAR runbook recording the paragraph 16
+reasoning still to write.
+
+### D-032: structured tags instead of a free-text essay box
+
+**Decision:** Accepted in principle, not scheduled. Offer tags such as "went
+above and beyond", "helped a colleague", "fixed something nobody noticed", with
+a short optional free text.
+
+**Why:** Not a legal requirement, and the highest-value change available for the
+Article 9 problem. People write essays in essay boxes. Every mitigation in
+`D-030` is a remedy after the fact; this is the only one that reduces how often
+the fact occurs. Left unscheduled because it changes the feel of the product and
+that is a decision to take deliberately rather than on legal advice alone.
+
+### D-033: two DPIAs, and the threat model is an annex
+
+**Decision:** Complete our own DPIA for the processing where we are controller,
+and publish a model DPIA and model legitimate interests assessment as customer
+collateral. Annex `SCHEMA_THREAT_MODEL.md` to both rather than submitting it as
+one.
+
+**Why:** Article 35(3) is not squarely met — say so in the DPIA, it shows the
+threshold was understood — but WP248 puts us over on at least three counts, of
+which vulnerable data subjects is decisive: employees are named in the guidance
+because of the employment power imbalance. Concede the evaluation-or-scoring
+criterion rather than arguing it; arguing reads as defensive and costs nothing
+to give up.
+
+The threat model supplies perhaps 40% of a DPIA, not the 90% previously assumed.
+It assesses risks to the *system*. A DPIA assesses risks to *individuals*, and
+needs necessity and proportionality, harms rather than control failures,
+consultation under Article 35(9) or a recorded reason for skipping it, and named
+sign-off. `DECISIONS.md` is an unusually good source for the necessity section.
+
+The customer's own DPIA is theirs and we cannot discharge it. The model is
+commercial advantage as much as compliance: every enterprise DPO will ask.
+
+### D-034: production region is London
+
+**Decision:** Create the production Supabase project in `eu-west-2` (London),
+before onboarding anyone. Closes `INF-012`.
+
+**Why:** There is no data localisation requirement in UK law and Ireland is
+lawful — EEA transfers are covered by adequacy carried across by the 2019 EU
+Exit Regulations and now sitting in Articles 45A and 47A UK GDPR. So this is not
+a legal decision. It is that the region cannot change after the project is
+created, the choice is free today, and the downside is asymmetric: UK public
+sector, NHS and financial services buyers apply "is it held in the UK?" as a
+hard filter, and losing on it means a migration with live employee data at the
+worst possible moment.
+
+**Caveat:** do not claim "your data never leaves the UK" until subprocessor
+support access has been audited. Storage region is the easy half; where Supabase,
+Resend and Firebase support staff sit is the real question, and an inaccurate
+residency claim would be worse than saying nothing given `D-003`.
+
+### D-035: warn the voter, not only the administrator
+
+**Decision:** The nomination screen warns the voter, before they vote, when the
+team is small enough that their ballot may be deducible. It says they do not
+have to vote. `get_cycle_confidentiality` returns a level and never a headcount.
+
+**Why:** `D-022` warns the administrator before a cycle opens, which is
+necessary and not sufficient — the person who can be identified from the result
+is the voter, and until now the voter was never told. Article 5(1)(a) fairness
+is judged by what the data subject understood when their data was collected,
+which is the moment they press submit, not a notice emailed at onboarding.
+
+A level rather than a count because `can_vote` and `user_id` are withheld from
+the client's column grant, so the arithmetic has to run server-side, and because
+"you may be identifiable" is the whole of what a voter needs in order to decide.
+Handing them a headcount would leak roster eligibility to make a warning
+marginally more precise.
+
+It ends by saying they do not have to vote because a warning that leaves
+somebody no action to take is decoration.
+
+**Implemented:** `voterConfidentialityMessage` and `voterConfidentialityNotice`
+in `src/domain/recognition/engine.ts` with five tests asserting the copy agrees
+with `assessConfidentiality` at every count; `get_cycle_confidentiality` in the
+migration; banner in `src/app/index.tsx`.
+
 ## Gate 0 sign-off record
 
 Complete this table before scaffolding.
@@ -276,3 +509,10 @@ Complete this table before scaffolding.
 | Deletion/winner retention rule | Recommended D-016 treatment, subject to legal review | Jonny | 25 July 2026 |
 | Beta organisation target | 3 to 5 in closed test, expand towards 10 to 20 | Jonny | 25 July 2026 |
 | Build start authorised | Yes, local foundation and application implementation | Jonny | 25 July 2026 |
+
+The two rows above marked "subject to legal review" — default retention and the
+deletion/winner retention rule — were answered on 28 July 2026 by
+`docs/LEGAL_ANSWERS.md` and are now carried by `D-026` and `D-028`. The
+retention menu stands; the winner rule stands only with the customer able to
+override it, which is what `D-028` builds. Neither has been seen by a solicitor,
+and the sign-off row stays open until one has seen them.

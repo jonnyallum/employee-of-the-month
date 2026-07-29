@@ -25,6 +25,8 @@ import {
   transitionRefusal,
   turnout,
   visibleLeaderboard,
+  voterConfidentialityNotice,
+  voterRosterConfidentialityNotice,
   winnerOf,
 } from './engine';
 
@@ -326,4 +328,73 @@ test('a roster large enough to be quiet stays quiet', () => {
     participant(`p${index}`),
   );
   assert.equal(assessRosterConfidentiality(wideRoster).warn, false);
+});
+
+// D-035. The administrator warning is not enough on its own: the person whose
+// ballot can be deduced is the voter, and the voter is the one who was never
+// told. These assert that the voter-facing wording exists wherever the
+// administrator-facing one does, and stays silent wherever it does not.
+test('the voter is warned on exactly the same arithmetic as the administrator', () => {
+  for (let count = 0; count <= 12; count += 1) {
+    const admin = assessConfidentiality(count);
+    const voter = voterConfidentialityNotice(count);
+
+    assert.equal(voter.warn, admin.warn, `n=${count} must agree on warning`);
+    assert.equal(voter.level, admin.level, `n=${count} must agree on level`);
+    assert.equal(
+      voter.eligibleVoters,
+      admin.eligibleVoters,
+      `n=${count} must agree on the count`,
+    );
+  }
+});
+
+test('the voter warning speaks to the voter and offers them a way out', () => {
+  for (const count of [0, 1, 2, 3, 7]) {
+    const message = voterConfidentialityNotice(count).message;
+    assert.notEqual(message, null, `n=${count} needs wording`);
+
+    // Addressed to the person at risk, not about them. "You" is the whole
+    // point of this decision; without it this is just the admin copy again.
+    assert.ok(
+      message?.includes('how you voted'),
+      `n=${count} must address the voter directly`,
+    );
+
+    // A warning that leaves somebody no action to take is decoration.
+    assert.ok(
+      message?.includes('do not have to vote'),
+      `n=${count} must leave the voter an option`,
+    );
+  }
+});
+
+test('the voter warning distinguishes certainty from likelihood', () => {
+  // With two or fewer voters the deduction is arithmetic, not probability, and
+  // the copy must not soften it into "may be possible".
+  assert.ok(voterConfidentialityNotice(2).message?.includes('can work out'));
+  assert.ok(voterConfidentialityNotice(5).message?.includes('may be possible'));
+});
+
+test('a voter in a large enough team is not warned', () => {
+  const atThreshold = voterConfidentialityNotice(
+    CONFIDENTIALITY_WARNING_THRESHOLD,
+  );
+  assert.equal(atThreshold.warn, false);
+  assert.equal(atThreshold.message, null);
+  assert.equal(voterConfidentialityNotice(40).message, null);
+});
+
+test('voter roster notice counts only linked, vote-eligible participants', () => {
+  const mixedRoster = [
+    participant('a'),
+    participant('b'),
+    participant('c', { canVote: false }),
+    participant('d', { userId: null }),
+  ];
+
+  const notice = voterRosterConfidentialityNotice(mixedRoster);
+  assert.equal(notice.eligibleVoters, 2);
+  assert.equal(notice.warn, true);
+  assert.ok(notice.message?.includes('do not have to vote'));
 });

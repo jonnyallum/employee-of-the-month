@@ -1750,3 +1750,57 @@ fighting.
 to `tail` masked gradle's exit code. Looking for the actual APK is what caught
 it, and looking for the artefact rather than trusting the status is the habit
 worth keeping.
+
+---
+
+# Verifying the legal-response migration
+
+Date: 28 July 2026
+
+The legal work arrived with an honest caveat: the migration and its 31 pgTAP
+assertions had never been executed, because that machine had no Postgres. This
+machine does.
+
+## The migration was right; a constraint of mine refused it
+
+Three assertions failed immediately, all on `redact_winner_snapshot`:
+
+```text
+23514: new row for relation "recognition_cycles"
+violates check constraint "recognition_cycles_winner_only_when_revealed"
+```
+
+The redaction severs `winner_participant_id` so a redacted name cannot be
+recovered by joining back to the roster. The constraint written in `DB-003`
+required that link to be present whenever `status = 'revealed'`, so every
+redaction failed.
+
+Two correct rules collided. The constraint exists to make `FR-RESULT-01`
+structurally true: no winner data may sit on a cycle that has not been revealed.
+That guarantee is untouched. What it *also* asserted, without anybody intending
+it, was that a revealed winner must remain identifiable forever — which is the
+opposite of what an Article 21 objection requires.
+
+The public fact of a result is the name and the count. The roster link is an
+internal convenience and precisely the thing redaction has to remove. So it is
+now optional on a revealed cycle and still forbidden on an unrevealed one.
+
+## Why this is worth recording
+
+The constraint was written three days ago for a good reason and was correct then.
+It became wrong when the product acquired an obligation that did not exist yet.
+Nothing was wrong with either decision; the conflict only existed once both were
+true, and only running the tests surfaced it.
+
+It also vindicates the caveat. Shipping that migration unverified would have
+produced a redaction feature that always failed, in the one area where failing
+quietly is least acceptable.
+
+## Result
+
+`Files=11, Tests=315` passing, across two consecutive replays from empty.
+`db lint` clean. Types regenerated. Typecheck, lint and 25 domain tests pass.
+
+Biome also had to be told to ignore `android/` and `ios/`: `expo prebuild`
+generates CMake JSON in there and it was producing 1,511 lint errors from files
+nobody wrote.

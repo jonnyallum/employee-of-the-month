@@ -120,23 +120,53 @@ export default function PrivacyScreen() {
           </View>
         ) : null}
 
-        {/* The wording here is the same claim the legal draft makes, and it is
-            deliberately narrower than "anonymous". The product stores who voted
-            in order to enforce one vote; what it does not do is expose it. */}
+        {/* D-031. This used to open with "Nobody." — which the threat model
+            and LEGAL_AND_PRIVACY.md section 3 both contradict, because a court
+            order, a database administrator or our own trusted server role can
+            reach nominator_user_id. A promise disproved by our own documents is
+            worse than a longer sentence. "Nobody in your organisation" is the
+            promise anyone actually cares about, and it is true. */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Who can see your nomination</Text>
           <Text style={styles.body}>
-            Nobody. Administrators see how many people voted and the result.
-            They cannot see who you nominated, and no screen, export or report
-            in this app will tell them.
+            Nobody in your organisation. Administrators see how many people
+            voted and who won. They cannot see who you nominated, and no screen,
+            export or report in this app will show them.
           </Text>
           <Text style={styles.body}>
             We keep an internal record of who voted so that everyone votes once.
-            That record is not available to your employer.
+            That record is not available to your employer. A small number of our
+            own technical staff can reach the underlying database to fix a fault
+            or investigate a security problem; that access is controlled and
+            logged. We would also have to disclose it if we were legally
+            required to, such as by a court order.
           </Text>
           <Text style={styles.emphasis}>
             This is confidential, not anonymous. In a small team it may still be
-            possible to work out how somebody voted from the result alone.
+            possible to work out how somebody voted from the result alone. We
+            warn you before you vote when your team is that small.
+          </Text>
+        </View>
+
+        {/* Article 13(1)(c) and (d): name the basis and the interest. Article
+            21(4) requires the right to object to be given explicitly and
+            separately from everything else, which is why it has its own card
+            rather than a line in a list. */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Taking part is your choice</Text>
+          <Text style={styles.body}>
+            You do not have to nominate anyone. Nobody is told whether you
+            voted, and there is no record anywhere in this app of who did not.
+          </Text>
+          <Text style={styles.body}>
+            Your employer relies on its legitimate interests in running a
+            voluntary recognition scheme. You have the right to object to that
+            at any time, and to ask your employer to stop including you.
+          </Text>
+          <Text style={styles.body}>
+            Results from this app must not be used in appraisals, pay,
+            promotion, redundancy or disciplinary decisions. Your employer has
+            agreed to that in its contract with us.
           </Text>
         </View>
 
@@ -148,14 +178,31 @@ export default function PrivacyScreen() {
               The record that somebody won a month is kept, so past results stay
               accurate.
             </Text>
+            {/* The old wording implied everything about a vote goes at the
+                retention period. It does not: the reason text is cleared and
+                the ballot stays. Saying so is the point of D-003. */}
+            <Text style={styles.body}>
+              We also keep a record that you voted, without anything you wrote,
+              for as long as the result exists.
+            </Text>
           </View>
         ) : null}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Get a copy of your data</Text>
+          {/* "Never" was too absolute. Withholding the author rests on the
+              third party exemption in Schedule 2 Part 3 paragraph 16 of the
+              Data Protection Act 2018, which is a balancing exemption: it can
+              be displaced if the author consents or disclosure is reasonable.
+              Promising "never" forecloses a judgment the statute requires. */}
           <Text style={styles.body}>
             Everything we hold about you, including anything colleagues wrote
-            about you once voting closed. We will never tell you who wrote it.
+            about you once voting closed. We will not normally tell you who
+            wrote it. If we are ever legally required to, we will explain why.
+          </Text>
+          <Text style={styles.body}>
+            If you think something written about you is inappropriate, tell your
+            employer's administrator. They can remove it.
           </Text>
           <Pressable
             accessibilityLabel="Get a copy of my data"
@@ -242,17 +289,29 @@ export default function PrivacyScreen() {
                 .
               </Text>
               <Text style={styles.body}>
-                A record that you won a month, if you did, is kept. Your
-                employer announced it, and removing it would change a past
-                result.
+                A record that you won a month, if you did, is kept by default.
+                Your employer announced it at the time. If you want that
+                removed, ask your employer's administrator — the decision is
+                theirs and they can do it without deleting the result.
               </Text>
             </>
           ) : (
             <>
+              {/* D-028. Retention after an erasure request is the employer's
+                  decision under Article 21, not ours, and this is the moment
+                  the person is actually making the choice — so it says so here
+                  as well as in the notice, and routes them to the controller
+                  rather than to us. */}
               <Text style={styles.body}>
-                This removes your account and your personal information. A
-                record that you won a month, if you did, is kept, because your
-                employer announced it at the time.
+                This removes your account and your personal information. Nothing
+                anybody wrote about you is kept.
+              </Text>
+              <Text style={styles.body}>
+                A record that you won a month, if you did, is kept by default,
+                because your employer announced it at the time. If you want that
+                removed or shown as initials instead, ask your employer's
+                administrator before you delete your account. They can do it,
+                and we will act on their instruction.
               </Text>
               <Text style={styles.label}>Type DELETE to confirm</Text>
               <TextInput
@@ -294,6 +353,18 @@ export default function PrivacyScreen() {
               </Pressable>
             </>
           )}
+        </View>
+
+        {/* Article 13(2)(d). Left until after the actions because it is a
+            route of last resort, but it has to be here and it has to name the
+            regulator rather than gesturing at "the relevant authority". */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>If you are unhappy</Text>
+          <Text style={styles.body}>
+            Tell your employer's administrator first, or contact us. If you are
+            still unhappy, you can complain to the Information Commissioner's
+            Office at ico.org.uk, which regulates data protection in the UK.
+          </Text>
         </View>
 
         <Pressable

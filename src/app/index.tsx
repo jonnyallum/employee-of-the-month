@@ -11,7 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { periodLabel, REASON_MAX_LENGTH } from '@/domain/recognition/engine';
+import {
+  type ConfidentialityLevel,
+  periodLabel,
+  REASON_MAX_LENGTH,
+  voterConfidentialityMessage,
+} from '@/domain/recognition/engine';
 import {
   type Cycle,
   castNomination,
@@ -19,6 +24,7 @@ import {
   listMemberships,
   listNominees,
   loadCurrentCycle,
+  loadCycleConfidentiality,
   loadMyNomination,
   type Membership,
   type MyNomination,
@@ -36,6 +42,7 @@ interface Loaded {
   myParticipantId: string | null;
   canVote: boolean;
   mine: MyNomination | null;
+  confidentiality: ConfidentialityLevel;
 }
 
 const EMPTY: Loaded = {
@@ -45,6 +52,7 @@ const EMPTY: Loaded = {
   myParticipantId: null,
   canVote: false,
   mine: null,
+  confidentiality: 'standard',
 };
 
 export default function CycleScreen() {
@@ -78,7 +86,12 @@ export default function CycleScreen() {
       ]);
 
       const me = (participantResult.data ?? [])[0] ?? null;
-      const mine = cycle ? await loadMyNomination(cycle.id) : null;
+      const [mine, confidentialityLevel] = cycle
+        ? await Promise.all([
+            loadMyNomination(cycle.id),
+            loadCycleConfidentiality(cycle.id),
+          ])
+        : ([null, 'standard'] as const);
 
       setData({
         membership,
@@ -87,6 +100,7 @@ export default function CycleScreen() {
         myParticipantId: me?.id ?? null,
         canVote: me?.can_vote ?? false,
         mine,
+        confidentiality: confidentialityLevel,
       });
       setSelected(mine?.nomineeParticipantId ?? null);
       setReason(mine?.reason ?? '');
@@ -106,6 +120,11 @@ export default function CycleScreen() {
   const choosable = useMemo(
     () => data.nominees.filter((n) => n.id !== data.myParticipantId),
     [data.nominees, data.myParticipantId],
+  );
+
+  // Null unless the team is small enough for a ballot to be deduced. D-035.
+  const confidentialityWarning = voterConfidentialityMessage(
+    data.confidentiality,
   );
 
   async function submit() {
@@ -294,6 +313,19 @@ export default function CycleScreen() {
               </View>
             ) : (
               <>
+                {/* D-035. D-022 warns the administrator before a cycle opens.
+                    The person whose ballot can be deduced is the voter, and
+                    until this existed the voter was never told. It says they do
+                    not have to vote because a warning with no available action
+                    is not a warning. */}
+                {confidentialityWarning ? (
+                  <View accessibilityRole="alert" style={styles.warnBox}>
+                    <Text style={styles.warnText}>
+                      {confidentialityWarning}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <Text style={styles.sectionLabel}>CHOOSE A COLLEAGUE</Text>
                 <View style={styles.list}>
                   {choosable.map((nominee) => {
@@ -340,8 +372,16 @@ export default function CycleScreen() {
                 </View>
 
                 <Text style={styles.sectionLabel}>WHY? (OPTIONAL)</Text>
+                {/* Above the field, not below it. This warning used to live in
+                    the character counter, which people read after they have
+                    finished typing. A warning that arrives too late to change
+                    what somebody wrote is decoration. D-031. */}
+                <Text style={styles.fieldWarning}>
+                  Please do not include health, disciplinary or other sensitive
+                  details about your colleague.
+                </Text>
                 <TextInput
-                  accessibilityLabel="Why are you nominating them? Optional."
+                  accessibilityLabel="Why are you nominating them? Optional. Please do not include health, disciplinary or other sensitive details."
                   maxLength={REASON_MAX_LENGTH}
                   multiline
                   onChangeText={setReason}
@@ -351,8 +391,7 @@ export default function CycleScreen() {
                   value={reason}
                 />
                 <Text style={styles.counter}>
-                  {reason.length}/{REASON_MAX_LENGTH}. Please do not include
-                  health, disciplinary or other sensitive details.
+                  {reason.length}/{REASON_MAX_LENGTH}
                 </Text>
 
                 <Pressable
@@ -518,6 +557,26 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: spacing.sm,
   },
+  // Above the reason field, so it is read before anything is typed. Weighted
+  // to be noticed without shouting: this is guidance, not an error.
+  fieldWarning: {
+    color: colours.ink,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 19,
+    marginBottom: spacing.sm,
+  },
+  // The small-team ballot warning. Amber rather than red: nothing has gone
+  // wrong, and the voter is being told something true so they can decide.
+  warnBox: {
+    backgroundColor: '#FDF3DC',
+    borderColor: colours.amber,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    padding: spacing.md,
+  },
+  warnText: { color: colours.ink, fontSize: 14, lineHeight: 20 },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: colours.lime,

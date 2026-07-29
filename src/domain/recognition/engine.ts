@@ -349,6 +349,64 @@ export function assessRosterConfidentiality(
   return assessConfidentiality(eligibleVoterIds(participants).size);
 }
 
+/**
+ * The same arithmetic, addressed to the person whose ballot is at risk.
+ *
+ * `assessConfidentiality` warns the administrator before a cycle opens. That is
+ * necessary and it is not sufficient: the person who can be identified from the
+ * result is the voter, and until now the voter was never told. Article 5(1)(a)
+ * fairness is judged by what the data subject understood when their data was
+ * collected, which is the moment they press submit, not a sentence in a notice
+ * they were emailed at onboarding. `D-035`.
+ *
+ * Deliberately ends by saying they do not have to vote. A warning that leaves
+ * somebody no action to take is decoration.
+ */
+const VOTER_CONFIDENTIALITY_MESSAGES: Record<
+  ConfidentialityLevel,
+  string | null
+> = {
+  determined:
+    'Your team is small enough that anyone who sees the result can work out ' +
+    'how you voted. We cannot prevent that. You do not have to vote.',
+  weak:
+    'Your team is small enough that it may be possible to work out how you ' +
+    'voted from the result. We cannot prevent that. You do not have to vote.',
+  standard: null,
+};
+
+/**
+ * The copy on its own, for callers holding a level rather than a count.
+ *
+ * The nomination screen is one of those: `can_vote` and `user_id` are withheld
+ * from the client's column grant, so a member cannot count the eligible voters
+ * and the level arrives from `get_cycle_confidentiality` instead. Keeping the
+ * wording here rather than in the screen means both paths say the same thing,
+ * and the test can assert that they do.
+ */
+export function voterConfidentialityMessage(
+  level: ConfidentialityLevel,
+): string | null {
+  return VOTER_CONFIDENTIALITY_MESSAGES[level] ?? null;
+}
+
+export function voterConfidentialityNotice(
+  eligibleVoters: number,
+): ConfidentialityAssessment {
+  const assessment = assessConfidentiality(eligibleVoters);
+  return {
+    ...assessment,
+    message: voterConfidentialityMessage(assessment.level),
+  };
+}
+
+/** Convenience for callers holding a roster rather than a count. */
+export function voterRosterConfidentialityNotice(
+  participants: readonly ParticipantLike[],
+): ConfidentialityAssessment {
+  return voterConfidentialityNotice(eligibleVoterIds(participants).size);
+}
+
 export function tally(
   participants: readonly NamedParticipant[],
   nominations: readonly NominationLike[],

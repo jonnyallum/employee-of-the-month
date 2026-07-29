@@ -10,6 +10,7 @@
  * enforce on an INSERT alone.
  */
 
+import type { ConfidentialityLevel } from '@/domain/recognition/engine';
 import { getSupabaseClient } from '@/lib/supabase';
 
 export interface Membership {
@@ -135,6 +136,30 @@ export async function listNominees(organisationId: string): Promise<Nominee[]> {
     displayName: row.display_name,
     team: row.team,
   }));
+}
+
+/**
+ * How exposed this voter's ballot is, as a level and never as a headcount.
+ *
+ * The count cannot be worked out on the client: `can_vote` and `user_id` are
+ * withheld from the column grant, which is what stops the roster telling a
+ * member who is eligible. So the arithmetic in `assessConfidentiality` runs on
+ * the server and only its conclusion comes back. D-035.
+ *
+ * Returns 'standard' if the call fails. A missing warning is a worse outcome
+ * than a spurious one, but a screen that will not render because a warning
+ * could not be fetched is the worst of the three.
+ */
+export async function loadCycleConfidentiality(
+  cycleId: string,
+): Promise<ConfidentialityLevel> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.rpc('get_cycle_confidentiality', {
+    target_cycle_id: cycleId,
+  });
+
+  if (error || typeof data !== 'string') return 'standard';
+  return data === 'determined' || data === 'weak' ? data : 'standard';
 }
 
 export async function loadMyNomination(

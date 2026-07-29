@@ -8,6 +8,17 @@ system actually does, so a solicitor reviews facts rather than assumptions.**
 Covers `PRV-001` and `PRV-002`. Neither card is complete until a qualified
 person has reviewed this and the outcome is recorded in `docs/DECISIONS.md`.
 
+**Answered, 28 July 2026.** The eight questions in section 10 are answered in
+`docs/LEGAL_ANSWERS.md`, and the product consequences are recorded as `D-026` to
+`D-035`. That document is not a solicitor's advice either; it is reasoning with
+its authorities cited, so a solicitor can check it rather than rebuild it. Two
+answers are marked contestable there and are the ones to take to counsel first:
+whether a winner may survive erasure, and whether the Article 15 third party
+exemption can be read across to discharge the Article 14 duty to name a source.
+
+Two factual claims below were wrong when checked against the code and are
+corrected in place, marked **[corrected]**.
+
 ## How to read this
 
 Every factual claim below is traceable to code in this repository, and the
@@ -98,9 +109,15 @@ treatment" is health data about the nominee, volunteered by a third party.
 Mitigations in the product today:
 
 - A warning immediately above the field, before typing, not buried in terms
-  (`src/app/index.tsx`).
+  (`src/app/index.tsx`). **[corrected]** This was untrue when written: the
+  warning was in the character counter *below* the field, where it arrives after
+  somebody has finished typing. Moved above the field, `D-031`.
 - Administrator moderation with hide and restore, each requiring a recorded
-  reason (`moderate_nomination`).
+  reason (`moderate_nomination`). **[corrected]** Hiding was never destructive —
+  it set `status = 'hidden'` and left the text in the row — and all moderation
+  was refused once a cycle was revealed, so the content that most needs removing
+  became permanent. A destructive `redact` action was added and is permitted
+  after reveal, `D-030`.
 - Reasons unavailable to administrators until a cycle closes (`D-014`), so live
   content cannot be browsed.
 

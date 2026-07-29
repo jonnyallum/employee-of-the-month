@@ -691,6 +691,10 @@ export type Database = {
           rank: number
         }[]
       }
+      get_cycle_confidentiality: {
+        Args: { target_cycle_id: string }
+        Returns: string
+      }
       get_cycle_turnout: {
         Args: { target_cycle_id: string }
         Returns: {
@@ -765,6 +769,14 @@ export type Database = {
           organisation_id: string
           period_month: string
         }[]
+      }
+      redact_winner_snapshot: {
+        Args: {
+          mode: string
+          redaction_reason: string
+          target_cycle_id: string
+        }
+        Returns: undefined
       }
       request_account_deletion: { Args: never; Returns: string }
       reveal_winner: {
