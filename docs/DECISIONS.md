@@ -459,9 +459,15 @@ quietly rewritten the results of every month the person voted in.
 **Implemented:** the migration above, 24 assertions in
 `supabase/tests/012_deletion_worker.test.sql`. Suite 337 → 361.
 
-**Still open:** nothing schedules it. It is a function, not a cron. Wiring it to
-a scheduled job belongs with the same job that runs `purge_expired_nominations`,
-and neither is scheduled yet.
+**Scheduled:** `supabase/migrations/20260729160000_schedule_retention_and_deletion.sql`.
+pg_cron, daily, 03:30 UTC, half an hour after the retention purge so the two are
+not competing for locks on the same rows and erasure runs after the purge has
+finished its pass. Both jobs pass the destructive argument explicitly, because
+`dry_run` defaults to true so that a careless caller does nothing — which means
+a scheduled caller has to say `false` out loud. Four assertions in
+`009_privacy.test.sql` cover both jobs existing and active, both running for
+real rather than dry, and the operator health view being unreachable by a
+client.
 
 ### D-038: the exposure surface is pinned per column, not per table
 

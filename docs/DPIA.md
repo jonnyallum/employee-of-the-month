@@ -331,9 +331,12 @@ become the right answer before it becomes the required one.
 2. Production project created in London (`D-034`).
 3. Sub-processor support-access audit, which decides both the transfer mechanism
    and whether any residency claim can be made at all.
-4. The retention purge and the deletion worker are written and tested but
-   **nothing schedules them**. A retention policy that never runs is not a
-   retention policy.
+4. ~~The retention purge and the deletion worker are written and tested but
+   nothing schedules them.~~ **Closed 29 July 2026.** Both run daily under
+   pg_cron, at 03:00 and 03:30 UTC. What remains is operational rather than
+   design: somebody has to look at `private.retention_job_health`, because a job
+   that silently stopped running is the failure mode that matters when the
+   privacy notice keeps making the promise either way.
 
 **Annexes:** `docs/SCHEMA_THREAT_MODEL.md`, `docs/DECISIONS.md`,
 `docs/DPA_AND_CONTRACT_TERMS.md`.

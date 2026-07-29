@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(42);
+select plan(46);
 
 delete from public.organisations;
 delete from auth.users;
@@ -476,6 +476,42 @@ select is(
 );
 
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- The jobs actually run
+-- ---------------------------------------------------------------------------
+--
+-- Everything above tests what the purge does when something calls it. For most
+-- of this project's life nothing did. A retention policy that is never invoked
+-- is a claim in a privacy notice, and this product's notice tells members their
+-- data is deleted after a period their employer chose.
+
+select is(
+  (select count(*)::int from cron.job
+   where jobname in ('eotm-retention-purge', 'eotm-process-deletions')
+     and active),
+  2,
+  'both retention jobs are scheduled and active'
+);
+
+-- dry_run defaults to true so a careless caller does nothing. That means the
+-- scheduled caller has to say false out loud, and this asserts it does.
+select ok(
+  (select command like '%false%' from cron.job
+   where jobname = 'eotm-retention-purge'),
+  'the scheduled purge runs for real rather than dry'
+);
+
+select ok(
+  (select command like '%false%' from cron.job
+   where jobname = 'eotm-process-deletions'),
+  'and so does the scheduled deletion worker'
+);
+
+select ok(
+  not has_table_privilege('authenticated', 'private.retention_job_health', 'select'),
+  'the job health view is operator-facing and not reachable by a client'
+);
 
 select * from finish();
 
